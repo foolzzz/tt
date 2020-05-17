@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_must_use)]
+use std::time;
 use std::thread;
 use std::process;
 use std::io::prelude::*;
@@ -106,6 +107,7 @@ pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>,
         let mut _tun_writer = utils::tun_fd::TunFd::new(raw_fd);
         let _upload = thread::spawn(move || {
             stream.set_nodelay(true);
+            stream.set_read_timeout(Some(time::Duration::from_secs(86400))).unwrap();   // timeout 24 hours
             let mut index: usize = 0;
             let mut offset:  i32 = 4 + 1 + 12 + 2 + 16;         // maximum data size read at first
             let mut last_offset: i32 = 0;

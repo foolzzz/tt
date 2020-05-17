@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_must_use)]
 use std::net;
+use std::time;
 use std::thread;
 use std::sync::mpsc;
 use std::error::Error;
@@ -12,13 +13,13 @@ use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr, ToSoc
 use log::{trace, debug, info, warn, error, Level};
 
 //pub fn handle_connection(&self, client_stream:net::TcpStream, encoder:Encoder) {
-pub fn handle_connection(rx: mpsc::Receiver<(TcpStream, Encoder)>, BUFFER_SIZE:usize){
+pub fn handle_connection(rx: mpsc::Receiver<(TcpStream, Encoder)>, BUFFER_SIZE: usize){
     for (client_stream, encoder) in rx {
         thread::spawn( move || do_handle_connection(client_stream, encoder, BUFFER_SIZE));
     }
 }
 
-pub fn do_handle_connection(client_stream:TcpStream, encoder: Encoder, BUFFER_SIZE: usize) {
+pub fn do_handle_connection(client_stream: TcpStream, encoder: Encoder, BUFFER_SIZE: usize) {
     let _encoder = encoder.clone();
     let _client_stream = client_stream.try_clone().unwrap();
     let upstream = match proxy_handshake(_client_stream, _encoder){
@@ -27,7 +28,9 @@ pub fn do_handle_connection(client_stream:TcpStream, encoder: Encoder, BUFFER_SI
     };
 
     upstream.set_nodelay(true);
+    upstream.set_read_timeout(Some(time::Duration::from_secs(18000)));          // timeout 5 hours
     client_stream.set_nodelay(true);
+    client_stream.set_read_timeout(Some(time::Duration::from_secs(18000)));     // timeout 5 hours
 
     let mut upstream_read = upstream.try_clone().unwrap();
     let mut upstream_write = upstream.try_clone().unwrap();
