@@ -207,7 +207,7 @@ fn start_listener(tx_tun: mpsc::Sender<(net::TcpStream, Encoder)>, tx_proxy: mps
             let mut data_len = 0;
             let mut count = 10;
             while count > 0 {
-                _stream.set_read_timeout(Some(time::Duration::from_secs( (rand::random::<u8>() + 60).into() ))).unwrap();
+                _stream.set_read_timeout(Some(time::Duration::from_secs( rand::random::<u8>() as u64 + 60 ))).unwrap();
                 let len = match _stream.peek(&mut buf_peek){
                     Ok(len) if len > 1 => len,
                     _ => return
