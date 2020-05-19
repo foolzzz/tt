@@ -172,13 +172,14 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
         let mut buf = vec![0u8;  BUFFER_SIZE];
         let mut buf2 = vec![0u8;  BUFFER_SIZE];
         let mut stream_write = _server.lock().unwrap().stream.try_clone().unwrap();
+        stream_write.set_write_timeout(Some(std::time::Duration::from_secs(1)));
         let mut encoder = _server.lock().unwrap().encoder.clone();
         loop {
             index = match tun_reader.read(&mut buf) {
                 Ok(read_size) if read_size > 0 => read_size,
                 _ => {
                     error!("tun read failed");
-                    stream_write.shutdown(net::Shutdown::Both);
+                    stream_write.shutdown(net::Shutdown::Both); // suicide here
                     break;
                 }
             };
@@ -190,12 +191,21 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                 let index2 = encoder.encode(&mut buf2, index);
                 match stream_write.write(&buf2[..index2]) {
                     Ok(_) => break,
-                    _ => {
-                        //error!("upstream write failed");
+                    Err(e) if e.raw_os_error().unwrap() == 11 => {
+                        // error code 11: Resource temporarily unavailable
+                        // the buffer may be full filled as a result of network failure, lost of FIN, etc..
+                        // (need to set write timeout)
+                        error!("upstream write failed, {:?}", e);
+                        stream_write.shutdown(net::Shutdown::Both); // suicide here
+                        return;
+                    },
+                    Err(_) => {
                         // wait for the _download thread to restore the connection
                         // and will give up the data after 12 tries (total 1560ms)
+                        //error!("upstream write failed, {:?}", e);
                         thread::sleep(time::Duration::from_millis((retry * 20) as u64));
                         stream_write = _server.lock().unwrap().stream.try_clone().unwrap();
+                        stream_write.set_write_timeout(Some(std::time::Duration::from_secs(1)));
                         encoder = _server.lock().unwrap().encoder.clone();
                         retry += 1;
                         if retry > 12 {
