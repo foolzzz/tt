@@ -191,15 +191,15 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                 let index2 = encoder.encode(&mut buf2, index);
                 match stream_write.write(&buf2[..index2]) {
                     Ok(_) => break,
-                    Err(e) if e.raw_os_error().unwrap() == 11 => {
+                    Err(e) => {
                         // error code 11: Resource temporarily unavailable
                         // the buffer may be full filled as a result of network failure, lost of FIN, etc..
                         // (need to set write timeout)
-                        error!("upstream write failed, {:?}", e);
-                        stream_write.shutdown(net::Shutdown::Both); // suicide here
-                        return;
-                    },
-                    Err(_) => {
+                        if e.raw_os_error().unwrap() == 11 {
+                            error!("upstream write failed, {:?}", e);
+                            stream_write.shutdown(net::Shutdown::Both); // force the download thread to reconnect
+                        }
+
                         // wait for the _download thread to restore the connection
                         // and will give up the data after 12 tries (total 1560ms)
                         //error!("upstream write failed, {:?}", e);
