@@ -61,23 +61,21 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
     };
 
     let mut time_now = utils::get_secs_now();
-    let _tx_tun = tx_tun.clone();
-    let _tx_proxy = tx_proxy.clone();
-    if (PORT_END - PORT_START) > 2
-        && utils::get_port(utils::get_otp(KEY, time_now/60 - 1), PORT_START, PORT_END)
-            != utils::get_port(utils::get_otp(KEY, time_now/60), PORT_START, PORT_END) {
-        thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60 - 1));
+    let time_start = if (PORT_END - PORT_START) > 2
+                        && utils::get_port(utils::get_otp(KEY, time_now/60 - 1), PORT_START, PORT_END)
+                            != utils::get_port(utils::get_otp(KEY, time_now/60), PORT_START, PORT_END){
+        time_now/60 - 1
+    }
+    else{
+        time_now/60
+    };
+
+    for i in time_start .. (time_now/60 + 2) {
+        let _tx_tun = tx_tun.clone();
+        let _tx_proxy = tx_proxy.clone();
+        thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, i));
         thread::sleep(time::Duration::from_millis(100));
     }
-
-    let _tx_tun = tx_tun.clone();
-    let _tx_proxy = tx_proxy.clone();
-    thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60));
-    thread::sleep(time::Duration::from_millis(100));
-
-    let _tx_tun = tx_tun.clone();
-    let _tx_proxy = tx_proxy.clone();
-    thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60 + 1));
 
     loop {
         // wait 2 more secs, let conflicted port to close itself,
