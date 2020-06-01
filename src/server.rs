@@ -60,36 +60,36 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
         true => false
     };
 
-    let time_now = utils::get_secs_now() / 60;
+    let mut time_now = utils::get_secs_now();
     let _tx_tun = tx_tun.clone();
     let _tx_proxy = tx_proxy.clone();
     if (PORT_END - PORT_START) > 2
-        && utils::get_port(utils::get_otp(KEY, time_now-1), PORT_START, PORT_END)
-            != utils::get_port(utils::get_otp(KEY, time_now), PORT_START, PORT_END) {
-        thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now - 1));
+        && utils::get_port(utils::get_otp(KEY, time_now/60 - 1), PORT_START, PORT_END)
+            != utils::get_port(utils::get_otp(KEY, time_now/60), PORT_START, PORT_END) {
+        thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60 - 1));
         thread::sleep(time::Duration::from_millis(100));
     }
 
     let _tx_tun = tx_tun.clone();
     let _tx_proxy = tx_proxy.clone();
-    thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now));
+    thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60));
     thread::sleep(time::Duration::from_millis(100));
 
     let _tx_tun = tx_tun.clone();
     let _tx_proxy = tx_proxy.clone();
-    thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now + 1));
+    thread::spawn( move || start_listener(_tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60 + 1));
 
     loop {
-        thread::sleep(time::Duration::from_secs(2));
-        let time_now = utils::get_secs_now();
-        if time_now % 60 >= 2 { continue; };  // once a minute
-        thread::sleep(time::Duration::from_secs(3));    // wait for conflicted port to close itself,
-                                                        // and not conflict with any thread
-                                                        // that waiting for this same port
+        // wait 2 more secs, let conflicted port to close itself,
+        // and not conflict with any thread that waiting for this same port
+        //
+        thread::sleep(time::Duration::from_secs( 60 - (time_now % 60) + 2 ));
+        time_now = utils::get_secs_now();
+
         let _tx_tun = tx_tun.clone();
         let _tx_proxy = tx_proxy.clone();
         thread::spawn( move || start_listener(
-            _tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, utils::get_secs_now()/60 + 1)
+            _tx_tun, _tx_proxy, KEY, METHOD, BIND_ADDR, PORT_START, PORT_END, time_now/60 + 1)
         );
     }
 
@@ -160,12 +160,15 @@ fn start_listener(tx_tun: mpsc::Sender<(net::TcpStream, Encoder)>, tx_proxy: mps
      */
     let _streams = Arc::clone(&streams);
     let _flag_stop = Arc::clone(&flag_stop);
+    let mut time_now = utils::get_secs_now();
     let _timer_thread = thread::spawn(move || {
         loop {
-            thread::sleep(time::Duration::from_secs(2));
-            let time_now = utils::get_secs_now();
-            if time_now % 60 >= 2 || time_now/60 < time_start { continue };  // once a minute
-            let time_diff = (time_now / 60 - time_start) as u8;
+            thread::sleep(time::Duration::from_secs( 60 - (time_now % 60) ));   // once a minute
+            time_now = utils::get_secs_now();
+            let time_diff = match time_now/60 >= time_start {
+                true => (time_now/60 - time_start) as u8,
+                false => continue
+            };
 
             // check lifetime
             if time_diff >= lifetime || time_diff > 2 && _streams.lock().unwrap().len() == 0 {
