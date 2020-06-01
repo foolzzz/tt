@@ -59,8 +59,6 @@ pub fn handle_connection(local_stream:net::TcpStream, KEY:&'static str,
                 Ok(read_size) if read_size > 0 => read_size,
                 _ => {
                     //error!("upstream read failed");
-                    upstream_read.shutdown(net::Shutdown::Both);
-                    local_stream_write.shutdown(net::Shutdown::Both);
                     break;
                 }
             };
@@ -124,8 +122,6 @@ pub fn handle_connection(local_stream:net::TcpStream, KEY:&'static str,
                 Ok(read_size) if read_size > 0 => read_size,
                 _ => {
                     //error!("local_stream read failed");
-                    upstream_write.shutdown(net::Shutdown::Both);
-                    local_stream_read.shutdown(net::Shutdown::Both);
                     break;
                 }
             };
@@ -134,11 +130,12 @@ pub fn handle_connection(local_stream:net::TcpStream, KEY:&'static str,
                 Ok(_) => (),
                 _ => {
                     //error!("upstream write failed");
-                    upstream_write.shutdown(net::Shutdown::Both);
                     break;
                 }
             };
         }
+        upstream_write.shutdown(net::Shutdown::Both);
+        local_stream_read.shutdown(net::Shutdown::Both);
         trace!("Upload stream exited...");
     });
 }
