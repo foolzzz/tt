@@ -186,11 +186,17 @@ pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>,
                         {
                             buf2[..4].copy_from_slice(&[0,0,0,2]);
                             buf2[4..data_len+4].copy_from_slice(&buf[offset as usize- data_len .. offset as usize]);
-                            _tun_writer.write(&buf2[..data_len+4]).unwrap();
+                            _tun_writer.write(&buf2[..data_len+4]).unwrap_or_else(|_err|{
+                                error!("tun write failed, {}", _err);
+                                0
+                            });
                         }
                         #[cfg(target_os = "linux")]
                         {
-                            _tun_writer.write(&buf[offset as usize - data_len .. offset as usize]).unwrap();
+                            _tun_writer.write(&buf[offset as usize - data_len .. offset as usize]).unwrap_or_else(|_err|{
+                                error!("tun write failed, {}", _err);
+                                0
+                            });
                         }
                         if (index - offset as usize) < (1 + 12 + 2 + 16) {
                             break;              // definitely not enough data to decode
