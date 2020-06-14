@@ -86,9 +86,9 @@ OPTIONS:
     -k, --key <key>
     -l, --listen <listen-addr>      [default: 0.0.0.0]
     -m, --methods <methods>         [default: chacha20-poly1305]
-        --mtu <mtu>                 [default: 1440]
     -r, --port-range <range>        [default: 1024-65535]
         --tun-ip <tun-ip>
+        --tun-mtu <tun-mtu>         [default: 1440]
         --tun-proto <tun-proto>     [default: UDP]
 ```
 
@@ -109,10 +109,10 @@ OPTIONS:
     -k, --key <key>
     -l, --listen <listen-addr>      [default: 127.0.0.1:1080]
     -m, --methods <methods>         [default: chacha20-poly1305]
-        --mtu <mtu>                 [default: 1440]
     -r, --port-range <range>        [default: 1024-65535]
     -s, --server <server>
         --tun-ip <tun-ip>
+        --tun-mtu <tun-mtu>         [default: 1440]
         --tun-proto <tun-proto>     [default: UDP]
 ```
 

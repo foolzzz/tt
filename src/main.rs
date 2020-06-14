@@ -35,7 +35,7 @@ enum Opt {
         #[structopt(short, long = "port-range", default_value = "1024-65535")]
         RANGE: String,
         #[structopt(long, default_value = "1440")]
-        MTU: usize,
+        TUN_MTU: usize,
         #[structopt(long)]
         TUN_IP: Option<String>,
         #[structopt(long, default_value = "UDP")]
@@ -60,7 +60,7 @@ enum Opt {
         #[structopt(short, long = "port-range", default_value = "1024-65535")]
         RANGE: String,
         #[structopt(long, default_value = "1440")]
-        MTU: usize,
+        TUN_MTU: usize,
         #[structopt(long, conflicts_with = "listen-addr")]
         TUN_IP: Option<String>,
         #[structopt(long, default_value = "UDP")]
@@ -73,10 +73,10 @@ enum Opt {
 fn main() {
     utils::my_log::init_with_level(Level::Debug).unwrap();
     match Opt::from_args() {
-        Opt::server{ LISTEN_ADDR, KEY, METHODS, RANGE, MTU, TUN_IP, TUN_PROTO, NO_PORT_JUMP, WITH_PROXY, VERBOSE } => {
+        Opt::server{ LISTEN_ADDR, KEY, METHODS, RANGE, TUN_MTU, TUN_IP, TUN_PROTO, NO_PORT_JUMP, WITH_PROXY, VERBOSE } => {
             set_verbose(VERBOSE);
             let RANGE: Vec<&str> = RANGE.split("-").collect();
-            let BUFFER_SIZE = if MTU > (4096 - 60) { MTU + 60 } else { 4096 };
+            let BUFFER_SIZE = if TUN_MTU > (4096 - 60) { TUN_MTU + 60 } else { 4096 };
             let PORT_RANGE_START = RANGE[0].parse::<u32>().unwrap();
             let PORT_RANGE_END = RANGE[1].parse::<u32>().unwrap();
             let KEY:&'static str = Box::leak(KEY.into_boxed_str());
@@ -89,15 +89,14 @@ fn main() {
                     process::exit(-1);
                 }
             };
-            assert!(MTU<=65536);
+            assert!(TUN_MTU<=65536);
             assert!(PORT_RANGE_START <= PORT_RANGE_END);
-            server::run(KEY, METHODS, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, MTU, NO_PORT_JUMP, WITH_PROXY);
+            server::run(KEY, METHODS, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, TUN_MTU, NO_PORT_JUMP, WITH_PROXY);
         },
-        Opt::client{ SERVER, LISTEN_ADDR, KEY, METHODS, RANGE, MTU, TUN_IP, TUN_PROTO, VERBOSE } => {
+        Opt::client{ SERVER, LISTEN_ADDR, KEY, METHODS, RANGE, TUN_MTU, TUN_IP, TUN_PROTO, VERBOSE } => {
             set_verbose(VERBOSE);
-            assert!(MTU<=65536);
             let RANGE: Vec<&str> = RANGE.split("-").collect();
-            let BUFFER_SIZE = if MTU > (4096 - 60) { MTU + 60 } else { 4096 };
+            let BUFFER_SIZE = if TUN_MTU > (4096 - 60) { TUN_MTU + 60 } else { 4096 };
             let PORT_RANGE_START = RANGE[0].parse::<u32>().unwrap();
             let PORT_RANGE_END = RANGE[1].parse::<u32>().unwrap();
             let KEY:&'static str = Box::leak(KEY.into_boxed_str());
@@ -111,9 +110,9 @@ fn main() {
                     process::exit(-1);
                 }
             };
-            assert!(MTU<=65536);
+            assert!(TUN_MTU<=65536);
             assert!(PORT_RANGE_START <= PORT_RANGE_END);
-            client::run(KEY, METHODS, SERVER_ADDR, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, MTU);
+            client::run(KEY, METHODS, SERVER_ADDR, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, TUN_MTU);
         },
     }
 }
