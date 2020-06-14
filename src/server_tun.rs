@@ -9,10 +9,12 @@ use std::os::unix::io::AsRawFd;
 use std::sync::{mpsc, Arc, Mutex};
 
 extern crate tun;
+extern crate socket2;
+
 use crate::utils;
 use tun::platform::posix;
 use crate::encoder::{Encoder};
-use std::net::{self, IpAddr, Ipv4Addr, TcpStream};
+use std::net::{self, IpAddr, Ipv4Addr};
 
 #[allow(unused_imports)]
 use log::{trace, debug, info, warn, error, Level};
@@ -43,20 +45,31 @@ pub fn setup(tun_addr: &str, MTU: usize) -> (posix::Reader, posix::Writer){
 }
 
 
-//    pub fn handle_connection(&self, stream:net::TcpStream, encoder:Encoder) {
-pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>, 
-                        BUFFER_SIZE: usize, tun_ip: &str, MTU: usize){
+pub fn handle_connection(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
+                        BUFFER_SIZE: usize, tun_ip: &str, tun_proto: &str, MTU: usize){
 
-    let clients: HashMap<Ipv4Addr, (TcpStream, Encoder)> = HashMap::new();
-    let clients = Arc::new(Mutex::new(clients));
-    let (mut tun_reader, tun_writer) = setup(tun_ip, MTU);
+    let (tun_reader, tun_writer) = setup(tun_ip, MTU);
     #[cfg(target_os = "linux")]
-    let mut route = utils::route::Route::new();
+    let route = utils::route::Route::new();
 
+    if tun_proto.to_uppercase() == "TCP" {
+        handle_connection_tcp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE, route)
+    }
+    else{
+        handle_connection_udp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE, route)
+    }
+}
+
+
+pub fn handle_connection_tcp(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
+                        mut tun_reader: posix::Reader, tun_writer: posix::Writer,
+                        BUFFER_SIZE: usize, mut route: utils::route::Route){
+    let clients: HashMap<Ipv4Addr, (socket2::Socket, Encoder)> = HashMap::new();
+    let clients = Arc::new(Mutex::new(clients));
     let _clients = clients.clone();
 
     // thread: read from tun
-    let _download = thread::spawn(move ||{
+    let _upload = thread::spawn(move ||{
         let mut index: usize;
         let mut buf  = vec![0u8; BUFFER_SIZE];
         loop {
@@ -96,7 +109,7 @@ pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>,
                 }
             }
         }
-        trace!("Download stream exited...");
+        trace!("{:?}, Upload stream exited...", thread::current().id());
     });
 
 
@@ -105,7 +118,7 @@ pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>,
         // thread: accept connection and write to channel
         let _clients = clients.clone();
         let mut _tun_writer = utils::tun_fd::TunFd::new(raw_fd);
-        let _upload = thread::spawn(move || {
+        let _download = thread::spawn(move || {
             stream.set_nodelay(true);
             stream.set_read_timeout(Some(time::Duration::from_secs(86400))).unwrap();   // timeout 24 hours
             let mut index: usize = 0;
@@ -161,13 +174,19 @@ pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>,
                 }
                 else if offset == -1 {
                     error!("Conn Failed: [{}] <=> [{}], Client first packet error!",
-                        stream.local_addr().unwrap(), stream.peer_addr().unwrap());
+                            stream.local_addr().unwrap().as_inet().unwrap(),
+                            stream.peer_addr().unwrap().as_inet().unwrap()
+                    );
                 }
                 //stream.shutdown(net::Shutdown::Both);
                 return;
             }
 
-            info!("Conn OK: [{}] <=> [{}], with IP: [{}]", stream.local_addr().unwrap(), stream.peer_addr().unwrap(), src_ip);
+            info!("Conn OK: [{}] <=> [{}], with IP: [{}]",
+                stream.local_addr().unwrap().as_inet().unwrap(),
+                stream.peer_addr().unwrap().as_inet().unwrap(),
+                src_ip
+            );
 
             index = 0;
             loop {
@@ -223,12 +242,215 @@ pub fn handle_connection(connection_rx: mpsc::Receiver<(TcpStream, Encoder)>,
                 }
                 else if offset == -2 {
                     // if decryption failed continuously, then we kill the stream
-                    error!("Packet decode error from: [{}]", stream.peer_addr().unwrap());
+                    error!("Packet decode error from: [{}]",
+                        stream.peer_addr().unwrap().as_inet().unwrap()
+                    );
                     break;
                 }
             }
             stream.shutdown(net::Shutdown::Both);
-            trace!("Upload stream exited...");
+            trace!("{:?}, Download stream exited...", thread::current().id());
+        });
+    }
+}
+
+
+pub fn handle_connection_udp(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
+                        mut tun_reader: posix::Reader, tun_writer: posix::Writer,
+                        BUFFER_SIZE: usize, mut route: utils::route::Route){
+    let clients: HashMap<Ipv4Addr, (socket2::Socket, Encoder)> = HashMap::new();
+    let clients = Arc::new(Mutex::new(clients));
+    let _clients = clients.clone();
+
+    // thread: read from tun
+    let _upload = thread::spawn(move ||{
+        let mut index: usize;
+        let mut buf  = vec![0u8; BUFFER_SIZE];
+        loop {
+            index = match tun_reader.read(&mut buf) {
+                Ok(read_size) if read_size > 0 => read_size,
+                _ => break
+            };
+            let dst_ip = Ipv4Addr::new(
+                    buf[16 + STRIP_HEADER_LEN],
+                    buf[17 + STRIP_HEADER_LEN],
+                    buf[18 + STRIP_HEADER_LEN],
+                    buf[19 + STRIP_HEADER_LEN]);
+
+            let mut _clients_locked = _clients.lock().unwrap();
+            let dest = if let Some((stream, encoder)) = _clients_locked.get(&dst_ip) {
+                    Some((stream, encoder))
+            }
+            else{
+                // lookup system route table, only for linux
+                #[cfg(not(target_os = "linux"))]
+                { None }
+                #[cfg(target_os = "linux")]
+                {
+                    if let Some(IpAddr::V4(next_hop)) = route.lookup(&dst_ip) {
+                        if let Some((stream, encoder)) = _clients_locked.get(&next_hop) {
+                            Some((stream, encoder))
+                        }
+                        else { None }
+                    }
+                    else { None }
+                }
+            };
+
+            if let Some((stream, encoder)) = dest{
+                index = encoder.encode(&mut buf[STRIP_HEADER_LEN..], index);
+                // TODO need a better solution, use UDP send_to() ?
+                // fix1: use non-blocking or seperate threads for each client
+                // fix2: try not to clone the stream each time.
+                let mut stream_write = stream.try_clone().expect("failed to clone stream_write");
+                match stream_write.write(&buf[STRIP_HEADER_LEN..index+STRIP_HEADER_LEN]) {
+                    Ok(_) => (),
+                    Err(_) => {
+/*
+                        // client disconnected or port lifetime expired
+                        // we have to drop every ref to remove the socket
+                        drop(stream);
+                        drop(stream_write);
+                        info!("{:?}, write error, remove the old socket", thread::current().id());
+                        _clients_locked.remove(&dst_ip).unwrap();
+*/
+                    },
+                };
+            }
+            drop(_clients_locked)
+        }
+        trace!("{:?}, Upload stream exited...", thread::current().id());
+    });
+
+
+    let raw_fd: i32 = tun_writer.as_raw_fd();
+    for (mut stream, encoder) in connection_rx {
+        // thread: accept connection and write to channel
+        let _clients = clients.clone();
+        let mut _tun_writer = utils::tun_fd::TunFd::new(raw_fd);
+        let _download = thread::spawn(move || {
+            stream.set_nodelay(true);
+            stream.set_read_timeout(Some(time::Duration::from_secs(86400))).unwrap();   // timeout 24 hours
+            let mut index: usize;
+            let mut failure_count: i32 = 0;
+
+            let mut buf  = vec![0u8; BUFFER_SIZE];
+            #[cfg(target_os = "macos")]
+            let mut buf2 = vec![0u8; BUFFER_SIZE];
+            let decoder = encoder.clone();
+            let mut stream_read = stream.try_clone().unwrap();
+
+            // get destination ip from first packet
+            let src_ip: Ipv4Addr;
+            loop {                                              // make sure read only one encrypted block
+                index = match stream_read.read(&mut buf) {
+                    Ok(read_size) if read_size > 1 => read_size,//make sure len >= 2, otherwise decode() may panic
+                    _ => return,
+                };
+
+                let (data_len, offset) = encoder.decode(&mut buf[..index]);
+                if data_len > 0 {
+                    let data = &buf[offset as usize - data_len .. offset as usize];
+                    match _tun_writer.write(data) {
+                        Ok(_) => (),
+                        Err(err) => error!("tun write failed, {}; data_len: {}, data: {:?}", err, data_len, data)
+                    };
+
+                    if data[0] == 0x44 {            // got special 'ipv4 handshake' packet
+                        src_ip = Ipv4Addr::new(data[1], data[2], data[3], data[4]);
+                        if let Some((old_stream, _)) = _clients.lock().unwrap().insert(src_ip, (stream_read, encoder)){
+                            // make sure we kill the old stream to make the old thread exit
+                            old_stream.shutdown(net::Shutdown::Both);
+                        }
+                        break;
+                    }
+                    else if data[0] >> 4 == 0x4 {   // got an ipv4 packet, cool
+                        src_ip = Ipv4Addr::new(data[12], data[13], data[14], data[15]);
+                        if let Some((old_stream, _)) = _clients.lock().unwrap().insert(src_ip, (stream_read, encoder)){
+                            // make sure we kill the old stream to make the old thread exit
+                            old_stream.shutdown(net::Shutdown::Both);
+                        }
+                        break;
+                    }
+                    else if data[0] == 0x66 {       // got special 'ipv6 handshake' packet
+                        // TODO
+                        continue;
+                    }
+                    else if data[0] >> 4 == 0x6 {   // got an ipv6 packet, have to do another round
+                        // TODO
+                        continue;
+                    }
+                }
+                else if offset == -1 || data_len == 0 && offset > 0 {   // decode error, or left to be read, which shall not happen with UDP
+                    error!("Conn Failed: [{}] <=> [{}], Client first packet error!",
+                            stream.local_addr().unwrap().as_inet().unwrap(),
+                            stream.peer_addr().unwrap().as_inet().unwrap()
+                    );
+                }
+                //stream.shutdown(net::Shutdown::Both);
+                return;
+            }
+
+            info!("Conn OK: [{}] <=> [{}], with IP: [{}]",
+                stream.local_addr().unwrap().as_inet().unwrap(),
+                stream.peer_addr().unwrap().as_inet().unwrap(),
+                src_ip
+            );
+
+            loop {
+                index = match stream.read(&mut buf) {
+                    Ok(read_size) if read_size > 1 => read_size,
+                    _ => break,
+                };
+
+                let (data_len, offset) = decoder.decode(&mut buf[..index]);
+                if data_len > 0 {
+                    #[cfg(target_os = "macos")]
+                    {
+                        buf2[..4].copy_from_slice(&[0,0,0,2]);
+                        buf2[4..data_len+4].copy_from_slice(&buf[offset as usize - data_len .. offset as usize]);
+                        _tun_writer.write(&buf2[..data_len+4]).unwrap_or_else(|_err|{
+                            error!("tun write failed, {}", _err);
+                            0
+                        });
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        _tun_writer.write(&buf[offset as usize - data_len .. offset as usize]).unwrap_or_else(|_err|{
+                            error!("tun write failed, {}", _err);
+                            0
+                        });
+                    }
+                    failure_count = 0
+                }
+                else if offset == -1 {
+                    failure_count += 1
+                }
+
+                if failure_count >= 2 {
+                    // if decryption failed continuously, then we kill the stream
+                    error!("Packet decode error from: [{}]", stream.peer_addr().unwrap().as_inet().unwrap());
+                    break;
+                }
+            }
+            stream.shutdown(net::Shutdown::Both);
+
+            // client disconnected or port lifetime expired
+            // we have to drop every ref to remove the socket
+            let mut _clients_locked = _clients.lock().unwrap();
+            if let Some((old_stream, _)) = _clients_locked.get(&src_ip){
+                if stream.local_addr().unwrap().as_inet().unwrap() == old_stream.local_addr().unwrap().as_inet().unwrap()
+                    && stream.peer_addr().unwrap().as_inet().unwrap() == old_stream.peer_addr().unwrap().as_inet().unwrap() {
+                    //debug!("{:?}, read error, remove the old socket", thread::current().id());
+                    _clients_locked.remove(&src_ip);
+                }
+                else{
+                    //debug!("{:?}, read error, old socket already gone", thread::current().id());
+                }
+            }
+            drop(stream);
+            drop(_clients_locked);
+            trace!("{:?}, Download stream exited...", thread::current().id());
         });
     }
 }

@@ -23,7 +23,7 @@ const STRIP_HEADER_LEN: usize = 0;
 const STRIP_HEADER_LEN: usize = 4;
 
 pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'static str, 
-            PORT_START:u32, PORT_END:u32, BUFFER_SIZE:usize, tun_addr: &str, MTU:usize) {
+            PORT_START:u32, PORT_END:u32, BUFFER_SIZE:usize, tun_addr: &str, tun_proto: &str, MTU:usize) {
 
     let (addr, mask) = utils::parse_CIDR(tun_addr).unwrap_or_else(|_err|{
         error!("Failed to parse CIDR address: [{}]", tun_addr);
@@ -61,27 +61,32 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'stati
     // special 'handshake' packet as the first packet
     let mut first_packet = vec![0x44];
     first_packet.append(&mut addr.octets().to_vec());
+    first_packet.append(&mut utils::get_random_bytes());
+    first_packet.append(&mut utils::get_random_bytes());
     let first_packet:&'static [u8] = Box::leak(first_packet.into_boxed_slice());
 
+    let is_udp = if tun_proto.to_uppercase() == "TCP" { false } else { true };
     loop {  
         // we use loop here, to restart the connection on "decode error...."
-        handle_tun_data(tun_fd, KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, BUFFER_SIZE, first_packet);
+        handle_tun_data(tun_fd, KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, BUFFER_SIZE, first_packet, is_udp);
     }
 }
 
 
 fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods, 
                 SERVER_ADDR:&'static str, PORT_START:u32, PORT_END:u32, BUFFER_SIZE:usize, 
-                first_packet:&'static [u8]){
+                first_packet:&'static [u8], is_udp: bool){
 
     struct Server {
-        stream: net::TcpStream,
-        encoder: Encoder,
+        stream:     socket2::Socket,
+        encoder:    Encoder,
+        renewed:    bool,
     };
-    let server = match client::tun_get_stream(KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, first_packet, 3){
-        Some((stream, encoder)) => Server {stream, encoder},
+    let server = match client::tun_get_stream(KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, first_packet, 3, is_udp){
+        Some((stream, encoder)) => Server {stream, encoder, renewed: false},
         None => process::exit(-1),
     };
+
     let server = Arc::new(Mutex::new(server));
     let mut tun_reader = utils::tun_fd::TunFd::new(tun_fd);
     let mut tun_writer = utils::tun_fd::TunFd::new(tun_fd);
@@ -102,13 +107,16 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                 Ok(read_size) if read_size > 0 => read_size,
                 _ => {
                     index = 0;      // clear the buf
+
+                    // call shutdown, make sure the 'write()' to fail on UDP socket
+                    stream_read.shutdown(net::Shutdown::Both);
+
                     // error!("upstream read failed");
                     // try to restore connection, and without 'first_packet', retry forever
-                    let server_new = match client::tun_get_stream(KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, first_packet, 0){
-                        Some((stream, encoder)) => Server {stream, encoder},
+                    let server_new = match client::tun_get_stream(KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, first_packet, 0, is_udp){
+                        Some((stream, encoder)) => Server {stream, encoder, renewed: true},
                         None => continue
                     };
-                    
                     stream_read = server_new.stream.try_clone().unwrap();
                     decoder = server_new.encoder.clone();
                     *_server.lock().unwrap() = server_new;
@@ -174,7 +182,6 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
     let _server = server.clone();
     let _upload = thread::spawn(move || {
         let mut index: usize;
-        let mut retry: usize;
         let mut buf = vec![0u8;  BUFFER_SIZE];
         let mut buf2 = vec![0u8;  BUFFER_SIZE];
         let mut stream_write = _server.lock().unwrap().stream.try_clone().unwrap();
@@ -189,10 +196,14 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                     break;
                 }
             };
-            retry = 0;
-            loop 
-            {   // move encode procedure inside the loop,
-                // cause the key bytes will change as the encoder
+//            info!("going to write,  {} <==> {}",
+//                stream_write.local_addr().unwrap().as_inet().unwrap(),
+//                stream_write.peer_addr().unwrap().as_inet().unwrap()
+//                );
+
+            // outer loop: 2 times
+            for _ in 0..2 {
+                // move encode procedure inside the loop, cause the key bytes will change as the encoder
                 buf2[..index].copy_from_slice(&buf[STRIP_HEADER_LEN..index+STRIP_HEADER_LEN]);
                 let index2 = encoder.encode(&mut buf2, index);
                 match stream_write.write(&buf2[..index2]) {
@@ -203,19 +214,47 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                         // (need to set write timeout)
                         if e.raw_os_error().unwrap() == 11 {
                             error!("upstream write failed, {:?}", e);
-                            stream_write.shutdown(net::Shutdown::Both); // force the download thread to reconnect
                         }
+                        else{
+                            // error!("upstream write failed, {:?}", e);
+                        }
+                        stream_write.shutdown(net::Shutdown::Both); // force the download thread to reconnect
 
-                        // wait for the _download thread to restore the connection
-                        // and will give up the data after 12 tries (total 1560ms)
-                        //error!("upstream write failed, {:?}", e);
-                        thread::sleep(time::Duration::from_millis((retry * 20) as u64));
-                        stream_write = _server.lock().unwrap().stream.try_clone().unwrap();
-                        stream_write.set_write_timeout(Some(std::time::Duration::from_secs(1)));
-                        encoder = _server.lock().unwrap().encoder.clone();
-                        retry += 1;
-                        if retry > 12 {
-                            break;
+                        // for tcp, we may retry after some seconds (total 1320ms),
+                        //          no matter whether we got a new connection or not;
+                        //
+                        // for udp, we may wait forever (about 1h actually), make sure the client
+                        //          will not send packet to the "old failed" socket on another run.
+                        //
+                        //      However, this is not enough when the server stops and restarts immediately.
+                        //      1) The 'read()' fails and then reconnects, so Server got this new
+                        //         connection. but the 'writer' thread does not know the failure,
+                        //         if the newly started server still got the "old" port on, the
+                        //         'writer' thread will sends packets using the old socket.
+                        //         Been fixed it by shutdown() the socket once read() failed.
+                        //         (see line: 113)
+                        //
+                        //      2) The 'read()' will not fail until next 'write()', if the newly
+                        //         started server still got the "old" port on, the 'write()' then
+                        //         will not fail as well. So the server will then catch two new
+                        //         connection. To fix this, we have to make sure the server require
+                        //         'first packet' on UDP mode, or try to decode when 'recv_from'.
+                        //
+                        let retry_max = if is_udp { 3600 } else { 12 };
+                        for mut retry in 0..retry_max{
+                            if retry > 50 { retry = 50 }    // it will not affect the loop times
+                            //error!("upstream write failed, {:?}", e);
+                            thread::sleep(time::Duration::from_millis(retry * 20));
+                            let renewed = _server.lock().unwrap().renewed;
+
+                            // check 'renewed' here to avoid client trying to send stupid packet at UDP mode
+                            if renewed{
+                                encoder = _server.lock().unwrap().encoder.clone();
+                                stream_write = _server.lock().unwrap().stream.try_clone().unwrap();
+                                stream_write.set_write_timeout(Some(std::time::Duration::from_secs(1)));
+                                _server.lock().unwrap().renewed = false;
+                                break
+                            }
                         }
                     }
                 }

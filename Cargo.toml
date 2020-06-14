@@ -1,6 +1,6 @@
 [package]
 name = "tt"
-version = "0.11.4"
+version = "0.12.0"
 authors = ["The TT Team"]
 edition = "2018"
 
@@ -8,6 +8,7 @@ edition = "2018"
 
 [target.'cfg(any(linux, unix, macos))'.dependencies]
 tun = "0.4"
+socket2 = { version = "0.3", features = ["reuseport"] }		#[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos")), feature = "reuseport"))]
 
 [dependencies]
 libc = "*"

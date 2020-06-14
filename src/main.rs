@@ -38,10 +38,12 @@ enum Opt {
         MTU: usize,
         #[structopt(long)]
         TUN_IP: Option<String>,
+        #[structopt(long, default_value = "UDP")]
+        TUN_PROTO: String,
         #[structopt(long="no-port-jump-on-tun-mode")]
         NO_PORT_JUMP: bool,
-        #[structopt(long="no-proxy")]
-        NO_PROXY: bool,
+        #[structopt(long="with-proxy")]
+        WITH_PROXY: bool,
         #[structopt(short, long)]
         VERBOSE: bool,
     },
@@ -61,6 +63,8 @@ enum Opt {
         MTU: usize,
         #[structopt(long, conflicts_with = "listen-addr")]
         TUN_IP: Option<String>,
+        #[structopt(long, default_value = "UDP")]
+        TUN_PROTO: String,
         #[structopt(short, long)]
         VERBOSE: bool,
     }
@@ -69,7 +73,7 @@ enum Opt {
 fn main() {
     utils::my_log::init_with_level(Level::Debug).unwrap();
     match Opt::from_args() {
-        Opt::server{ LISTEN_ADDR, KEY, METHODS, RANGE, MTU, TUN_IP, NO_PORT_JUMP, NO_PROXY, VERBOSE } => {
+        Opt::server{ LISTEN_ADDR, KEY, METHODS, RANGE, MTU, TUN_IP, TUN_PROTO, NO_PORT_JUMP, WITH_PROXY, VERBOSE } => {
             set_verbose(VERBOSE);
             let RANGE: Vec<&str> = RANGE.split("-").collect();
             let BUFFER_SIZE = if MTU > (4096 - 60) { MTU + 60 } else { 4096 };
@@ -87,9 +91,9 @@ fn main() {
             };
             assert!(MTU<=65536);
             assert!(PORT_RANGE_START <= PORT_RANGE_END);
-            server::run(KEY, METHODS, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, MTU, NO_PORT_JUMP, NO_PROXY);
+            server::run(KEY, METHODS, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, MTU, NO_PORT_JUMP, WITH_PROXY);
         },
-        Opt::client{ SERVER, LISTEN_ADDR, KEY, METHODS, RANGE, MTU, TUN_IP, VERBOSE } => {
+        Opt::client{ SERVER, LISTEN_ADDR, KEY, METHODS, RANGE, MTU, TUN_IP, TUN_PROTO, VERBOSE } => {
             set_verbose(VERBOSE);
             assert!(MTU<=65536);
             let RANGE: Vec<&str> = RANGE.split("-").collect();
@@ -109,7 +113,7 @@ fn main() {
             };
             assert!(MTU<=65536);
             assert!(PORT_RANGE_START <= PORT_RANGE_END);
-            client::run(KEY, METHODS, SERVER_ADDR, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, MTU);
+            client::run(KEY, METHODS, SERVER_ADDR, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, MTU);
         },
     }
 }
