@@ -41,7 +41,7 @@ Result:
 - [x] Underlying protocol
     - [x] TCP
     - [ ] TCP with fastopen
-    - [ ] UDP
+    - [x] UDP
 - [x] Proxy & tunnels 
     - [x] http proxy
     - [x] socks5 proxy(only CONNECT command suppported)
@@ -50,8 +50,8 @@ Result:
 	- [ ] [WinTUN](https://www.wintun.net/) support (for Windows
 	- [x] forward packet based on system route
 - [x] Encryption
-    - [x] chacha20-poly1305
     - [x] aes-256-gcm
+    - [x] chacha20-poly1305
 - [x] Binary tool
     - [x] single binary (serves as both server and client)
     - [ ] daemon mode support
@@ -69,31 +69,32 @@ Result:
 ### Usage 
 #### server
 ```
-tt-server 0.11.0
+tt-server 0.12.0
 TT, The Tunnel, server side
 
 USAGE:
     tt server [FLAGS] [OPTIONS] --key <key>
 
 FLAGS:
-    -h, --help       Prints help information
-	--no-port-jump-on-tun-mode
-	--no-proxy
-    -V, --version    Prints version information
+    -h, --help                        Prints help information
+        --no-port-jump-on-tun-mode
+    -V, --version                     Prints version information
     -v, --verbose
+        --with-proxy
 
 OPTIONS:
     -k, --key <key>
-    -l, --listen <listen-addr>     [default: 0.0.0.0]
-    -m, --methods <methods>        [default: chacha20-poly1305]
-        --mtu <mtu>                [default: 1440]
-    -r, --port-range <range>       [default: 1024-65535]
+    -l, --listen <listen-addr>      [default: 0.0.0.0]
+    -m, --methods <methods>         [default: chacha20-poly1305]
+        --mtu <mtu>                 [default: 1440]
+    -r, --port-range <range>        [default: 1024-65535]
         --tun-ip <tun-ip>
+        --tun-proto <tun-proto>     [default: UDP]
 ```
 
 #### client
 ```
-tt-client 0.11.0
+tt-client 0.12.0
 TT, The Tunnel, client side
 
 USAGE:
@@ -106,12 +107,13 @@ FLAGS:
 
 OPTIONS:
     -k, --key <key>
-    -l, --listen <listen-addr>     [default: 127.0.0.1:1080]
-    -m, --methods <methods>        [default: chacha20-poly1305]
-        --mtu <mtu>                [default: 1440]
-    -r, --port-range <range>       [default: 1024-65535]
+    -l, --listen <listen-addr>      [default: 127.0.0.1:1080]
+    -m, --methods <methods>         [default: chacha20-poly1305]
+        --mtu <mtu>                 [default: 1440]
+    -r, --port-range <range>        [default: 1024-65535]
     -s, --server <server>
         --tun-ip <tun-ip>
+        --tun-proto <tun-proto>     [default: UDP]
 ```
 
 ----
