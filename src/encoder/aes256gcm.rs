@@ -66,7 +66,7 @@ impl EncoderBasicTrait for AES256GCM{
         let input_len = data.len();
         let random_size = self.decode_random_size(data[0], data[1]);
         let left_shall_be_read:i32 = (1 + random_size + 2 + 16) as i32 - (input_len as i32);
-        if left_shall_be_read > 33 {
+        if left_shall_be_read > 33 || random_size < 12 {
             return (0, -1)
         }
         else if left_shall_be_read > 0 {
