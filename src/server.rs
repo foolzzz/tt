@@ -178,9 +178,10 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
     // If we kill all the existing streams, then the client has to establish a new one to
     // resume connection. Also, if we kill streams at the very first seconeds of each
     // minute, this seems to be a traffic pattern.
+    let _flag_stop = *flag_stop.lock().unwrap();    // no tot hold the lock while sleep
     thread::sleep(time::Duration::from_secs(
         (
-            ( *flag_stop.lock().unwrap() -1 ) * 60
+            ( _flag_stop - 1 ) * 60
             +
             ( rand::random::<u8>() % 30 ) as usize
         ) as u64 ));
@@ -201,9 +202,7 @@ pub fn start_listener_udp(
         encoder: Encoder, BIND_ADDR:&'static str, port: u32, lifetime: u8,
         streams: Arc<Mutex<Vec<socket2::Socket>>>, flag_stop: Arc<Mutex<usize>>){
 
-    debug!("Open:  [UDP:{}], lifetime: [{}]", port, lifetime);
     let udplistener = socket2::Socket::new(socket2::Domain::ipv4(), socket2::Type::dgram(), None).unwrap();
-
     // have to set reuse before every bind
     udplistener.set_reuse_port(true).unwrap();
     udplistener.set_reuse_address(true).unwrap();
@@ -230,6 +229,7 @@ pub fn start_listener_udp(
             return
         }
     }
+    debug!("Open:  [UDP:{}], lifetime: [{}]", port, lifetime);
 
     let mut buf_peek = [0u8; 4096];
     loop{
