@@ -234,12 +234,6 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                         //         Been fixed it by shutdown() the socket once read() failed.
                         //         (see line: 113)
                         //
-                        //      2) The 'read()' will not fail until next 'write()', if the newly
-                        //         started server still got the "old" port on, the 'write()' then
-                        //         will not fail as well. So the server will then catch two new
-                        //         connection. To fix this, we have to make sure the server require
-                        //         'first packet' on UDP mode, or try to decode when 'recv_from'.
-                        //
                         let retry_max = if is_udp { 3600 } else { 12 };
                         for mut retry in 0..retry_max{
                             if retry > 50 { retry = 50 }    // it will not affect the loop times

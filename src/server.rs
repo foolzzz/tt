@@ -172,7 +172,7 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
     // #TODO try to close the underlying socket to interrupt
     #[allow(unused_must_use)]{
         net::TcpStream::connect(format!("127.0.0.1:{}", port));
-        net::UdpSocket::bind("0.0.0.0:0").unwrap().send_to(&[], format!("127.0.0.1:{}", port));
+        net::UdpSocket::bind("0.0.0.0:0").unwrap().send_to("2333".as_bytes(), format!("127.0.0.1:{}", port));
     }
 
     // If we kill all the existing streams, then the client has to establish a new one to
@@ -237,18 +237,10 @@ pub fn start_listener_udp(
         //      Also recv_from will truncates the data, thu consuming the first packet;
         //      So we make sure the client will send some random trash first.
         //
-        //Fix2: See comments in client_tun.rs:242
-        //      So we will try to decode the first packet, if success, then drop
         match udplistener.recv_from(&mut buf_peek){
-            Ok((len, addr)) => {
+            Ok((len, addr)) if len > 1 => {
                 if *flag_stop.lock().unwrap() > 0 {     // 0: ok;  1: stop normally;  > 1: stop but sleep some time to kill streams
-                    drop(udplistener);
                     break;
-                };
-
-                if len < 2 || encoder.decode(&mut buf_peek[..len]).0 > 0 {
-                    error!("fount stupid client");
-                    continue;
                 };
 
                 let client_socket = socket2::Socket::new(socket2::Domain::ipv4(), socket2::Type::dgram(), None).unwrap();
@@ -266,16 +258,10 @@ pub fn start_listener_udp(
                     error!("client_socket connect error, {}", err);
                 });
 
-                if encoder.decode(&mut buf_peek[..len]).0 > 0 {
-                    error!("found stupid client");
-                    client_socket.shutdown(net::Shutdown::Both).unwrap();
-                }
-                else{
-                    tx_tun.send((client_socket, encoder.clone())).unwrap_or_else(|err|{
-                        error!("send client_socket error, {}", err);
-                    });
-                    streams.lock().unwrap().push(socket2::Socket::from(_client_socket));
-                }
+                tx_tun.send((client_socket, encoder.clone())).unwrap_or_else(|err|{
+                    error!("send client_socket error, {}", err);
+                });
+                streams.lock().unwrap().push(socket2::Socket::from(_client_socket));
 
                 // unset reuse for udplistener, to aovid any other thread/process bind on it
                 udplistener.set_reuse_port(false).unwrap();
@@ -319,7 +305,6 @@ pub fn start_listener_tcp(
     let mut buf_peek = [0u8; 4096];
     for stream in listener.incoming() {
         if *flag_stop.lock().unwrap() > 0 {         // 0: ok;  1: stop normally;  > 1: stop but sleep some time to kill streams
-            drop(listener); 
             break; 
         };
         let stream = match stream {
