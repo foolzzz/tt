@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![allow(unused_must_use)]
 
+#[cfg(not(target_os = "windows"))]
 extern crate socket2;
 
 use std::time;
@@ -50,6 +51,7 @@ pub fn get_stream(KEY:&'static str, METHOD:&'static EncoderMethods, time_now:u64
     )
 }
 
+#[cfg(not(target_os = "windows"))]
 pub fn get_stream_new(KEY:&'static str, METHOD:&'static EncoderMethods, time_now:u64,
                         SERVER_ADDR:&'static str, PORT_RANGE_START:u32, PORT_RANGE_END:u32,
                         first_packet:&'static [u8], is_udp: bool)
@@ -102,6 +104,9 @@ pub fn get_stream_new(KEY:&'static str, METHOD:&'static EncoderMethods, time_now
 
     Ok((sock, encoder))
 }
+
+
+#[cfg(not(target_os = "windows"))]
 pub fn tun_get_stream(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'static str,
                 PORT_START:u32, PORT_END:u32, first_packet:&'static [u8], retry_max: usize, is_udp: bool)
             -> Option<(socket2::Socket, Encoder)> {

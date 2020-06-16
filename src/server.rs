@@ -1,12 +1,13 @@
 #![allow(non_snake_case)]
 extern crate log;
-extern crate socket2;
 extern crate lazy_static;
+
+#[cfg(not(target_os = "windows"))]
+extern crate socket2;
 
 use std::net;
 use std::time;
 use std::thread;
-use std::process;
 use std::sync::{Arc, Mutex, mpsc};
 
 use crate::utils;
@@ -38,9 +39,10 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
 
     *TUN_MODE.lock().unwrap() = match TUN_IP{
         Some(tun_ip) => {
-            if cfg!(target_os = "windows") {
+            #[cfg(target_os = "windows")]
+            {
                 error!("Error: tun mode does not support windows for now");
-                process::exit(-1);
+                std::process::exit(-1);
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -109,6 +111,9 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
 }
 
 pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
+        #[cfg(target_os = "windows")]
+        tx_tun: mpsc::Sender<(net::TcpStream, Encoder)>,
+        #[cfg(not(target_os = "windows"))]
         tx_tun: mpsc::Sender<(socket2::Socket, Encoder)>,
         KEY:&'static str, METHOD:&EncoderMethods, BIND_ADDR:&'static str,
         PORT_RANGE_START:u32, PORT_RANGE_END:u32, time_start:u64) {
@@ -131,6 +136,7 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
      */
     let mut time_now = utils::get_secs_now();
 
+    #[cfg(not(target_os = "windows"))]
     if *TUN_MODE.lock().unwrap() == 2 {
         let _tx_tun = tx_tun.clone();
         let _encoder = encoder.clone();
@@ -197,6 +203,7 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
 }
 
 
+#[cfg(not(target_os = "windows"))]
 pub fn start_listener_udp(
         tx_tun: mpsc::Sender<(socket2::Socket, Encoder)>,
         encoder: Encoder, BIND_ADDR:&'static str, port: u32, lifetime: u8,
@@ -275,9 +282,20 @@ pub fn start_listener_udp(
 
 pub fn start_listener_tcp(
         tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
+
+        #[cfg(not(target_os = "windows"))]
         tx_tun: mpsc::Sender<(socket2::Socket, Encoder)>,
+        #[cfg(target_os = "windows")]
+        tx_tun: mpsc::Sender<(net::TcpStream, Encoder)>,
+
         encoder: Encoder, BIND_ADDR:&'static str, port: u32, lifetime: u8,
-        streams: Arc<Mutex<Vec<socket2::Socket>>>, flag_stop: Arc<Mutex<usize>>){
+
+        #[cfg(not(target_os = "windows"))]
+        streams: Arc<Mutex<Vec<socket2::Socket>>>,
+        #[cfg(target_os = "windows")]
+        streams: Arc<Mutex<Vec<net::TcpStream>>>,
+
+        flag_stop: Arc<Mutex<usize>>){
 
     let listener;
     let mut retry = 0;
@@ -360,9 +378,15 @@ pub fn start_listener_tcp(
             // IP header length: v4>=20, v6>=40, our defined first packet: v4=5, v6=...
             else if *TUN_MODE.lock().expect("TUN_MODE lock failed") == 1  && data_len >= 5
                 && (buf_peek[index]>>4 == 0x4 || buf_peek[index]>>4 == 0x6){
+                    #[cfg(not(target_os = "windows"))]
                     tx_tun.send((socket2::Socket::from(_stream), _encoder)).unwrap();
             }
+
+            #[cfg(not(target_os = "windows"))]
             streams.lock().unwrap().push(socket2::Socket::from(stream));       // push streams here, to be killed
+
+            #[cfg(target_os = "windows")]
+            streams.lock().unwrap().push(stream);       // push streams here, to be killed
         });
     }
     debug!("Close: [TCP:{}], lifetime: [{}]", port, lifetime);
