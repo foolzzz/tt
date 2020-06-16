@@ -47,23 +47,21 @@ pub fn setup(tun_addr: &str, MTU: usize) -> (posix::Reader, posix::Writer){
 
 pub fn handle_connection(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
                         BUFFER_SIZE: usize, tun_ip: &str, tun_proto: &str, MTU: usize){
-
     let (tun_reader, tun_writer) = setup(tun_ip, MTU);
-    #[cfg(target_os = "linux")]
-    let route = utils::route::Route::new();
-
     if tun_proto.to_uppercase() == "TCP" {
-        handle_connection_tcp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE, route)
+        handle_connection_tcp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE)
     }
     else{
-        handle_connection_udp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE, route)
+        handle_connection_udp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE)
     }
 }
 
 
 pub fn handle_connection_tcp(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
-                        mut tun_reader: posix::Reader, tun_writer: posix::Writer,
-                        BUFFER_SIZE: usize, mut route: utils::route::Route){
+                    mut tun_reader: posix::Reader, tun_writer: posix::Writer, BUFFER_SIZE: usize){
+    #[cfg(target_os = "linux")]
+    let mut route = utils::route::Route::new();
+
     let clients: HashMap<Ipv4Addr, (socket2::Socket, Encoder)> = HashMap::new();
     let clients = Arc::new(Mutex::new(clients));
     let _clients = clients.clone();
@@ -256,8 +254,10 @@ pub fn handle_connection_tcp(connection_rx: mpsc::Receiver<(socket2::Socket, Enc
 
 
 pub fn handle_connection_udp(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
-                        mut tun_reader: posix::Reader, tun_writer: posix::Writer,
-                        BUFFER_SIZE: usize, mut route: utils::route::Route){
+                    mut tun_reader: posix::Reader, tun_writer: posix::Writer, BUFFER_SIZE: usize){
+    #[cfg(target_os = "linux")]
+    let mut route = utils::route::Route::new();
+
     let clients: HashMap<Ipv4Addr, (socket2::Socket, Encoder)> = HashMap::new();
     let clients = Arc::new(Mutex::new(clients));
     let _clients = clients.clone();
