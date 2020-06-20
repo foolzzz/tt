@@ -34,7 +34,11 @@ enum Opt {
         METHODS: String,
         #[structopt(short, long = "port-range", default_value = "1024-65535")]
         RANGE: String,
-        #[structopt(long, default_value = "1440")]
+
+        // max_tt_header = 1 + range(12, 33) + 16 = 49
+        // for UDP: MTU <= 1500 - 20 - 8 - max_tt_header = 1423
+        // for TCP: MTU <= 1500 - 20 - 20 - max_tt_header = 1411
+        #[structopt(long, default_value = "1410")]
         TUN_MTU: usize,
         #[structopt(long)]
         TUN_IP: Option<String>,
@@ -47,6 +51,7 @@ enum Opt {
         #[structopt(short, long)]
         VERBOSE: bool,
     },
+
     #[structopt(name = "client", about = "TT, The Tunnel, client side")]
     client {
         #[structopt(short, long)]
@@ -59,7 +64,7 @@ enum Opt {
         METHODS: String,
         #[structopt(short, long = "port-range", default_value = "1024-65535")]
         RANGE: String,
-        #[structopt(long, default_value = "1440")]
+        #[structopt(long, default_value = "1410")]
         TUN_MTU: usize,
         #[structopt(long, conflicts_with = "listen-addr")]
         TUN_IP: Option<String>,
