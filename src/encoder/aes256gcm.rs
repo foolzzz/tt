@@ -47,8 +47,7 @@ impl AES256GCM {
 
 impl EncoderBasicTrait for AES256GCM{
     fn encode(&self, data: &mut [u8], data_len:usize) -> usize {
-        let random_bytes = utils::get_random_bytes();
-        let random_size = random_bytes.len();
+        let (random_size, random_bytes) = utils::get_random_bytes();
         let nounce = &random_bytes[ .. 12];
         let aad = &self.key_bytes[ .. 8];
         let data_start = 1 + random_size + 2 + 16;

@@ -61,8 +61,8 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'stati
     // special 'handshake' packet as the first packet
     let mut first_packet = vec![0x44];
     first_packet.append(&mut addr.octets().to_vec());
-    first_packet.append(&mut utils::get_random_bytes());
-    first_packet.append(&mut utils::get_random_bytes());
+    first_packet.append(&mut utils::get_random_bytes().1);
+    first_packet.append(&mut utils::get_random_bytes().1);
     let first_packet:&'static [u8] = Box::leak(first_packet.into_boxed_slice());
 
     let is_udp = if tun_proto.to_uppercase() == "TCP" { false } else { true };

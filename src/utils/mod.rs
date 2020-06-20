@@ -43,7 +43,7 @@ pub fn get_size_xor_bytes(key:&str, otp:u32) -> [u8;32] {
     sha256_bytes(&key)
 }
 
-pub fn get_random_bytes() -> Vec<u8> {
+pub fn get_random_bytes() -> (usize, Vec<u8>) {
     let mut rng = rand::thread_rng();
     let mut length = rng.gen_range(12, 33);
     let mut result = Vec::with_capacity(length);
@@ -51,7 +51,7 @@ pub fn get_random_bytes() -> Vec<u8> {
         result.push(rng.gen::<u8>());
         length -= 1;
     };
-    result
+    (length, result)
 }
 
 pub fn get_otp(KEY:&str, time_minutes:u64) -> u32 {

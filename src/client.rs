@@ -78,9 +78,9 @@ pub fn get_stream_new(KEY:&'static str, METHOD:&'static EncoderMethods, time_now
 
         // for udp, first write will never fail, but second read/write will fail if CONNECTION REFUSED
         // and cause the server will consume the first packet, we hence send some random data first.
-        let mut random_bytes = utils::get_random_bytes();
-        random_bytes.append(&mut utils::get_random_bytes());
-        random_bytes.append(&mut utils::get_random_bytes());
+        let mut random_bytes = utils::get_random_bytes().1;
+        random_bytes.append(&mut utils::get_random_bytes().1);
+        random_bytes.append(&mut utils::get_random_bytes().1);
         sock.send(&random_bytes)?;
 
         // sleep sometime to wait the OS see whether the dst port is accessilbe or not
