@@ -45,11 +45,10 @@ pub fn get_size_xor_bytes(key:&str, otp:u32) -> [u8;32] {
 
 pub fn get_random_bytes() -> (usize, Vec<u8>) {
     let mut rng = rand::thread_rng();
-    let mut length = rng.gen_range(12, 33);
+    let length = rng.gen_range(12, 33);
     let mut result = Vec::with_capacity(length);
-    while length > 0  {
+    for _ in 0..length {
         result.push(rng.gen::<u8>());
-        length -= 1;
     };
     (length, result)
 }
