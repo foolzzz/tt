@@ -69,7 +69,7 @@ Result:
 ### Usage 
 #### server
 ```
-tt-server 0.12.0
+tt-server 0.12.1
 TT, The Tunnel, server side
 
 USAGE:
@@ -88,13 +88,13 @@ OPTIONS:
     -m, --methods <methods>         [default: chacha20-poly1305]
     -r, --port-range <range>        [default: 1024-65535]
         --tun-ip <tun-ip>
-        --tun-mtu <tun-mtu>         [default: 1440]
+        --tun-mtu <tun-mtu>         [default: 1410]
         --tun-proto <tun-proto>     [default: UDP]
 ```
 
 #### client
 ```
-tt-client 0.12.0
+tt-client 0.12.1
 TT, The Tunnel, client side
 
 USAGE:
@@ -112,7 +112,7 @@ OPTIONS:
     -r, --port-range <range>        [default: 1024-65535]
     -s, --server <server>
         --tun-ip <tun-ip>
-        --tun-mtu <tun-mtu>         [default: 1440]
+        --tun-mtu <tun-mtu>         [default: 1410]
         --tun-proto <tun-proto>     [default: UDP]
 ```
 
