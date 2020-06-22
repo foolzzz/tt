@@ -24,7 +24,7 @@ use crate::encoder::aes256gcm::AES256GCM;
 use crate::encoder::chacha20poly1305::ChaCha20;
 
 lazy_static! {
-    static ref TUN_MODE:    Mutex<u8> = Mutex::new(0);        // 0: off, 1: tcp, 2: udp
+    static ref TUN_MODE:    Mutex<u8> = Mutex::new(0);        // 0: off, 1: tcp, 2: udp, 3: both
     static ref PROXY_MODE:  Mutex<bool> = Mutex::new(false);
     static ref NO_PORT_JUMP:Mutex<bool> = Mutex::new(false);
 }
@@ -46,10 +46,18 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
             }
             #[cfg(not(target_os = "windows"))]
             {
-                info!("TT {}, Server (tun mode)", env!("CARGO_PKG_VERSION"));
-                let mode = if TUN_PROTO.to_uppercase() == "TCP" { 1 } else { 2 };
-                thread::spawn( move || server_tun::handle_connection(rx_tun, BUFFER_SIZE, &tun_ip, &TUN_PROTO, MTU));
-                mode
+                let (tun_mode, proto_info) = match TUN_PROTO.to_uppercase().as_str() {
+                    "TCP" => (1, "TCP"),
+                    "UDP" => (2, "UDP"),
+                    //"BOTH"=> (3, "TCP&UDP"),  // not supported yet
+                    _ => {
+                        error!("Invalid tun protocol: [{}], available protocol: [ TCP | UDP | BOTH ]", TUN_PROTO);
+                        std::process::exit(-1);
+                    }
+                };
+                info!("TT {}, Server (tun mode on {})", env!("CARGO_PKG_VERSION"), proto_info);
+                thread::spawn( move || server_tun::handle_connection(rx_tun, BUFFER_SIZE, &tun_ip, tun_mode, MTU));
+                tun_mode
             }
         },
         None => 0

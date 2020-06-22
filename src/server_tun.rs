@@ -46,9 +46,9 @@ pub fn setup(tun_addr: &str, MTU: usize) -> (posix::Reader, posix::Writer){
 
 
 pub fn handle_connection(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
-                        BUFFER_SIZE: usize, tun_ip: &str, tun_proto: &str, MTU: usize){
+                        BUFFER_SIZE: usize, tun_ip: &str, tun_mode: u8, MTU: usize){
     let (tun_reader, tun_writer) = setup(tun_ip, MTU);
-    if tun_proto.to_uppercase() == "TCP" {
+    if tun_mode == 1 {
         handle_connection_tcp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE)
     }
     else{
