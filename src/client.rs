@@ -157,7 +157,7 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'stati
 
         #[cfg(not(target_os = "windows"))]
         {
-            info!("TT {}, Client (tun mode)", env!("CARGO_PKG_VERSION"));
+            info!("TT {}, Client (tun mode on {})", env!("CARGO_PKG_VERSION"), TUN_PROTO.to_uppercase());
             client_tun::run(&KEY, METHOD, &SERVER_ADDR, PORT_START, PORT_END, BUFFER_SIZE, &tun_ip, &TUN_PROTO, MTU);
         }
     }
