@@ -120,13 +120,18 @@ pub fn do_handle_connection(client_stream: TcpStream, encoder: Encoder, BUFFER_S
 
 pub fn proxy_handshake(mut stream: TcpStream, encoder: Encoder) -> Result<TcpStream, Box<dyn Error>>{
     let mut buf = [0u8; 4096];
-    let _len = stream.read(&mut buf)?;
+    let mut buf_toss = [0u8; 4096];
+    let _len = stream.peek(&mut buf)?;      // TTCONNECT may send data packet right after handshake packet.
+                                            // thus we have to peek here, then use read() to
+                                            // consume proper length of data
 
     let (data_len, offset) = encoder.decode(&mut buf[.._len]);
     let index = offset as usize - data_len;
 
     // TT CONNECT (for tt client > 0.12.1)
     if &buf[index .. index + 9] == "TTCONNECT".as_bytes() {
+        // toss away decrypted data
+        stream.read(&mut buf_toss[ .. offset as usize])?;
         let addr: Vec<SocketAddr> = {
             let domain = String::from_utf8_lossy(&buf[index + 9 .. offset as usize]);
             debug!("[TTCONNECT] {} => {}", stream.peer_addr().unwrap(), domain);
@@ -137,9 +142,13 @@ pub fn proxy_handshake(mut stream: TcpStream, encoder: Encoder) -> Result<TcpStr
             Err(_) => return Err("upstream connect failed".into())
         }
     }
+    else{
+        // if not TTCONNECT, toss away the data from socket queue
+        stream.read(&mut buf_toss[.._len])?;
+    }
 
     // SOCKS5 (for tt client <= 0.12.1)
-    else if (data_len == 2 + buf[index+1] as usize) && buf[index]==0x05 {
+    if (data_len == 2 + buf[index+1] as usize) && buf[index] == 0x05 {
         buf[..2].copy_from_slice(&[0x05, 0x00]);
         let data_len = encoder.encode(&mut buf, 2);
         stream.write(&buf[..data_len])?;
