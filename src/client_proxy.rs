@@ -71,7 +71,7 @@ pub fn handle_connection(local_stream:  TcpStream,
             return;
         }
         Err(err) => {
-            error!("proxy_handshake error: {}", err);
+            error!("handshake error: {}", err);
             return;
         }
     };
@@ -208,14 +208,14 @@ pub fn proxy_handshake(mut stream: TcpStream) -> Result<String, Box<dyn Error>>{
                 SocketAddr::from( SocketAddrV6::new( Ipv6Addr::new(
                     buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]), port, 0, 0)).to_string()
             },
-            _ => return Err("failed to parse address".into()),
+            _ => return Err("Handshake failed at socks5: failed to parse address".into()),
         };
 
         debug!("[SOCKS5] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
         buf[..10].copy_from_slice(&[0x5, 0x0, 0x0, 0x1, 0x7f, 0x0, 0x0, 0x1, 0x0, 0x0]);
         match stream.write(&buf[..10]) {
             Ok(_) => Ok(domain),
-            Err(_) => Err("Handshake failed at socks5".into())
+            Err(err) => Err(format!("Handshake failed at socks5: {}", err).into())
         }
     }
 
@@ -227,8 +227,8 @@ pub fn proxy_handshake(mut stream: TcpStream) -> Result<String, Box<dyn Error>>{
         debug!("[HTTP] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
 
         match stream.write("HTTP/1.0 200 Connection established\r\n\r\n".as_bytes()) {
-            Ok(_) if domain.len() > 0 => Ok(domain),
-            _ => Err("Handshake failed at HTTP CONNECT".into())
+            Ok(_) => Ok(domain),
+            Err(err) => Err(format!("Handshake failed at HTTP CONNECT: {}", err).into())
         }
     }
 
@@ -242,10 +242,6 @@ pub fn proxy_handshake(mut stream: TcpStream) -> Result<String, Box<dyn Error>>{
         if !domain.contains(":") {
             domain.push_str(":80")
         }
-
-        match domain.len() > 0 {
-            true => Ok(format!("{}", domain)),
-            false => Err("Handshake failed at HTTP Plain: no domain provided".into())
-        }
+        Ok(format!("{}", domain))
     }
 }
