@@ -5,7 +5,7 @@ use crate::client;
 use std::error::Error;
 use std::io::prelude::*;
 use crate::encoder::EncoderMethods;
-use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr, ToSocketAddrs, TcpStream, TcpListener};
+use std::net::{self, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr, TcpStream, TcpListener};
 
 #[allow(unused_imports)]
 use log::{trace, debug, info, warn, error, Level};
@@ -54,7 +54,7 @@ pub fn handle_connection(local_stream:  TcpStream,
 
     // do handshake
     match proxy_handshake(local_stream){
-        Ok(dest) => {
+        Ok(dest) if dest.len() > 0 => {
             let mut buf = vec![0u8; BUFFER_SIZE];
             buf[ .. 9].copy_from_slice("TTCONNECT".as_bytes());
             buf[9 .. 9 + dest.len()].copy_from_slice(dest.as_bytes());
@@ -67,8 +67,11 @@ pub fn handle_connection(local_stream:  TcpStream,
                 }
             };
         },
+        Ok(_) => {
+            return;
+        }
         Err(err) => {
-            error!("{}", err);
+            error!("proxy_handshake error: {}", err);
             return;
         }
     };
@@ -176,52 +179,42 @@ pub fn proxy_handshake(mut stream: TcpStream) -> Result<String, Box<dyn Error>>{
         stream.read(&mut buf)?;
         stream.write(&[0x05, 0x00])?;
         len = stream.read(&mut buf)?;
-        if len == 0 || buf[1] != 0x01 {
-            return Err("Handshake failed at socks5: not CONNECT".into());           // not CONNECT
+        if len == 0{
+            //return Err("Handshake failed at socks5: terminated".into());
+            return Ok("".into())
+        }
+        else if buf[1] != 0x01 {
+            return Err("Handshake failed at socks5: not CONNECT".into());
         }
 
         let port:u16 = ((buf[len-2] as u16) << 8) | buf[len-1] as u16;
-        let (addr, domain) = match buf[3] {
+        info!("socks5 port: {}", port);
+        let domain = match buf[3] {
             0x01 => {                                   // ipv4 address
-                (
-                    vec![SocketAddr::from( SocketAddrV4::new(Ipv4Addr::new(buf[4], buf[5], buf[6], buf[7]), port) )],
-                    None
-                )
+                    SocketAddr::from( SocketAddrV4::new(Ipv4Addr::new(buf[4], buf[5], buf[6], buf[7]), port)).to_string()
             },
             0x03 => {                                   // domain name
                 let length = buf[4] as usize;
                 let mut domain = String::from_utf8_lossy(&buf[5..length+5]).to_string();
                 domain.push_str(&":");
                 domain.push_str(&port.to_string());
-                (domain.to_socket_addrs()?.collect(), Some(domain))
+                domain
             },
             0x04 => {                                   // ipv6 address
                 let buf = (2..10).map(|x| {
                     (u16::from(buf[(x * 2)]) << 8) | u16::from(buf[(x * 2) + 1])
                 }).collect::<Vec<u16>>();
-                (
-                    vec![ SocketAddr::from( SocketAddrV6::new( Ipv6Addr::new(
-                        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]), port, 0, 0) )],
-                    None
-                 )
+
+                SocketAddr::from( SocketAddrV6::new( Ipv6Addr::new(
+                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]), port, 0, 0)).to_string()
             },
             _ => return Err("failed to parse address".into()),
         };
 
-        let dest = match domain {
-            Some(value) => {
-                debug!("[SOCKS5] CONNECT: {} => {}", stream.peer_addr().unwrap(), value);
-                format!("{}", value)
-            },
-            None => {
-                debug!("[SOCKS5] CONNECT: {} => {}", stream.peer_addr().unwrap(), addr[0]);
-                format!("{}", addr[0])
-            }
-        };
-
+        debug!("[SOCKS5] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
         buf[..10].copy_from_slice(&[0x5, 0x0, 0x0, 0x1, 0x7f, 0x0, 0x0, 0x1, 0x0, 0x0]);
         match stream.write(&buf[..10]) {
-            Ok(_) => Ok(dest),
+            Ok(_) => Ok(domain),
             Err(_) => Err("Handshake failed at socks5".into())
         }
     }
@@ -240,6 +233,7 @@ pub fn proxy_handshake(mut stream: TcpStream) -> Result<String, Box<dyn Error>>{
     }
 
     // HTTP Plain
+    // (#TODO may panic if used as https proxy, need some check here)
     else {
         // for HTTP Plain, we shall not consume the first packet
         let domain = String::from_utf8_lossy(&buf[..len]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
