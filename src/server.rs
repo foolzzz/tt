@@ -371,14 +371,15 @@ pub fn start_listener_tcp(
             let index = offset as usize - data_len;
             if *PROXY_MODE.lock().expect("PROXY_MODE lock failed") && data_len > 2
                 && (
-                    (data_len == 2 + buf_peek[index + 1] as usize) && buf_peek[index] == 0x05
-                    || &buf_peek[index .. index + 7] == "CONNECT".as_bytes()
-                    || &buf_peek[index .. index + 3] == "GET".as_bytes()
-                    || &buf_peek[index .. index + 3] == "PUT".as_bytes()
-                    || &buf_peek[index .. index + 4] == "POST".as_bytes()
-                    || &buf_peek[index .. index + 4] == "HEAD".as_bytes()
-                    || &buf_peek[index .. index + 6] == "DELETE".as_bytes()
-                    || &buf_peek[index .. index + 7] == "OPTIONS".as_bytes()
+                    (data_len == 2 + buf_peek[index + 1] as usize) && buf_peek[index] == 0x05   // SOCKS5
+                    || &buf_peek[index .. index + 9] == "TTCONNECT".as_bytes()                  // TT CONNECT
+                    || &buf_peek[index .. index + 7] == "CONNECT".as_bytes()                    // HTTP CONNECT
+                    || &buf_peek[index .. index + 3] == "GET".as_bytes()                        // HTTP
+                    || &buf_peek[index .. index + 3] == "PUT".as_bytes()                        // HTTP
+                    || &buf_peek[index .. index + 4] == "POST".as_bytes()                       // HTTP
+                    || &buf_peek[index .. index + 4] == "HEAD".as_bytes()                       // HTTP
+                    || &buf_peek[index .. index + 6] == "DELETE".as_bytes()                     // HTTP
+                    || &buf_peek[index .. index + 7] == "OPTIONS".as_bytes()                    // HTTP
                 ){
                 tx_proxy.send((_stream, _encoder)).expect("Failed: tx_proxy.send()");
                 return                                      // no need to push proxy stream to die

@@ -6,7 +6,7 @@ use std::thread;
 use std::sync::mpsc;
 use std::error::Error;
 use std::io::prelude::*;
-use crate::encoder::{Encoder};
+use crate::encoder::Encoder;
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr, ToSocketAddrs, TcpStream};
 
 #[allow(unused_imports)]
@@ -118,15 +118,28 @@ pub fn do_handle_connection(client_stream: TcpStream, encoder: Encoder, BUFFER_S
     });
 }
 
-pub fn proxy_handshake(mut stream: TcpStream, encoder:Encoder) -> Result<TcpStream, Box<dyn Error>>{
+pub fn proxy_handshake(mut stream: TcpStream, encoder: Encoder) -> Result<TcpStream, Box<dyn Error>>{
     let mut buf = [0u8; 4096];
     let _len = stream.read(&mut buf)?;
 
     let (data_len, offset) = encoder.decode(&mut buf[.._len]);
     let index = offset as usize - data_len;
 
-    // SOCKS5
-    if (data_len == 2 + buf[index+1] as usize) && buf[index]==0x05 {
+    // TT CONNECT (for tt client > 0.12.1)
+    if &buf[index .. index + 9] == "TTCONNECT".as_bytes() {
+        let addr: Vec<SocketAddr> = {
+            let domain = String::from_utf8_lossy(&buf[index + 9 .. offset as usize]);
+            debug!("[TTCONNECT] {} => {}", stream.peer_addr().unwrap(), domain);
+            domain.to_socket_addrs()?.collect()
+        };
+        match TcpStream::connect(&addr[..]){
+            Ok(upstream) => return Ok(upstream),
+            Err(_) => return Err("upstream connect failed".into())
+        }
+    }
+
+    // SOCKS5 (for tt client <= 0.12.1)
+    else if (data_len == 2 + buf[index+1] as usize) && buf[index]==0x05 {
         buf[..2].copy_from_slice(&[0x05, 0x00]);
         let data_len = encoder.encode(&mut buf, 2);
         stream.write(&buf[..data_len])?;
@@ -191,10 +204,9 @@ pub fn proxy_handshake(mut stream: TcpStream, encoder:Encoder) -> Result<TcpStre
             }
         }
     }
-    // HTTP CONNECT
+    // HTTP CONNECT (for tt client <= 0.12.1)
     else if &buf[index .. index + 7] == "CONNECT".as_bytes() {
         let addr: Vec<SocketAddr> = {
-            let _buf = &buf[index .. offset as usize];
             let domain = String::from_utf8_lossy(&buf[index..offset as usize]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
             debug!("[HTTP] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
             domain.to_socket_addrs()?.collect()
@@ -220,10 +232,9 @@ pub fn proxy_handshake(mut stream: TcpStream, encoder:Encoder) -> Result<TcpStre
         }
     }
 
-    // HTTP Plain
+    // HTTP Plain (for tt client <= 0.12.1)
     else {
         let addr: Vec<SocketAddr> = {
-            let _buf = &buf[index .. offset as usize];
             let domain = String::from_utf8_lossy(&buf[index..offset as usize]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
             debug!("[HTTP] Proxy: {} => {}", stream.peer_addr().unwrap(), domain);
             let mut domain = domain.split("//").collect::<Vec<&str>>()[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string();
