@@ -69,7 +69,7 @@ Result:
 ### Usage 
 #### server
 ```
-tt-server 0.12.1
+tt-server 1.0.0
 TT, The Tunnel, server side
 
 USAGE:
@@ -94,7 +94,7 @@ OPTIONS:
 
 #### client
 ```
-tt-client 0.12.1
+tt-client 1.0.0
 TT, The Tunnel, client side
 
 USAGE:
