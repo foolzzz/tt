@@ -188,7 +188,6 @@ pub fn proxy_handshake(mut stream: TcpStream) -> Result<String, Box<dyn Error>>{
         }
 
         let port:u16 = ((buf[len-2] as u16) << 8) | buf[len-1] as u16;
-        info!("socks5 port: {}", port);
         let domain = match buf[3] {
             0x01 => {                                   // ipv4 address
                     SocketAddr::from( SocketAddrV4::new(Ipv4Addr::new(buf[4], buf[5], buf[6], buf[7]), port)).to_string()
