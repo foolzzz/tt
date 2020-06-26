@@ -25,7 +25,7 @@ Result:
 
 || tt | ss-libev|
 |----|----|----|
-|```aes-256-gcm```| 250 ~ 300 MB/s | 350 ~ 400 MB/s |
+|```aes-256-gcm```| 300 ~ 350 MB/s | 350 ~ 400 MB/s |
 |```chacha20-poly1305```| ≈ 200 MB/s | ≈ 300 MB/s |
 
 ----
@@ -34,14 +34,14 @@ Result:
     - [x] dynamic port (HOTP)
     - [x] dynamic port lifetime (HOTP)
 - [x] Random padding
-    - [x] random data at the beginning of payload
+    - [x] random data
     - [x] dynamic length of random data
 - [ ] Replay attack proof
 	- [ ] use port+counter as AEAD additional data
 - [x] Underlying protocol
-    - [x] TCP
-    - [ ] TCP with fastopen
-    - [x] UDP
+    - [x] TCP (PROXY mode & TUN mode)
+    - [x] UDP (TUN mode)
+    - [ ] TCP fastopen
 - [x] Proxy & tunnels 
     - [x] http proxy
     - [x] socks5 proxy(only CONNECT command suppported)
@@ -52,9 +52,6 @@ Result:
 - [x] Encryption
     - [x] aes-256-gcm
     - [x] chacha20-poly1305
-- [x] Binary tool
-    - [x] single binary (serves as both server and client)
-    - [ ] daemon mode support
 - [ ] Hook API 
     - [ ] encode/decode hook api (consider eBPF)
 - [ ] Fake traffic
@@ -119,10 +116,10 @@ OPTIONS:
 ----
 #### About MTU problem:
 
-for systems with MTU < 1500, if tt runs on ```tun``` mode, you are supposed to
-* set ```--mtu [MTU] - 60```
+* TUN mode on ```udp``` , set mtu like：
+    * ```--tun-mtu = 1410 - [ 1500 - REAL_MTU ]```
 
-or
 
-* set [TCP MSS clamping](https://www.tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.cookbook.mtu-mss.html): ```iptables -t mangle -I FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu```
-
+* TUN mode on ```tcp``` , set mtu or [TCP MSS clamping](https://www.tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.cookbook.mtu-mss.html)
+    * ```--tun-mtu = 1410 - [ 1500 - REAL_MTU ]```
+    * ```iptables -t mangle -I FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu```
