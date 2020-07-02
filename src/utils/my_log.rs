@@ -32,8 +32,13 @@ impl Log for SimpleLogger {
             } else {
                 record.module_path().unwrap_or_default()
             };
+
+            // for crate time 0.2, but it does not resolve the timezone problem with openwrt,
+            // which has /etc/TZ instead of /etc/localtime, it doesn't work even with env TZ.
+            //
+            //let time_local = time::OffsetDateTime::now_local();
+            //let time_str = format!("{} {}", time_local.date().format("%Y%m%d"), time_local.time().format("%T"));
             println!( "{} [{:<5}] [{}] {}",
-//                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 time::now().strftime("%Y%m%d %T").unwrap().to_string(),
                 level_str,
                 target,
