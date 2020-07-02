@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use chacha20poly1305::ChaCha20Poly1305;
-use aead::{NewAead, generic_array::GenericArray};
+use aead::{NewAead, AeadInPlace};
 
 use crate::utils;
 use crate::encoder::EncoderBasicTrait;
@@ -17,7 +17,7 @@ impl ChaCha20 {
         ChaCha20 {
             key_bytes:utils::get_key_bytes(KEY, otp),
             size_xor_bytes: utils::get_size_xor_bytes(KEY, otp),
-            cipher: ChaCha20Poly1305::new(GenericArray::clone_from_slice(&utils::get_key_bytes(KEY,otp))),
+            cipher: ChaCha20Poly1305::new(&utils::get_key_bytes(KEY,otp).into()),
         }
     }
 
@@ -52,7 +52,7 @@ impl EncoderBasicTrait for ChaCha20{
         let aad = &self.key_bytes[ .. 8];
         let data_start = 1 + random_size + 2 + 16;
 
-        let tag = self.cipher.encrypt_in_place_detached(&GenericArray::clone_from_slice(nounce), aad, &mut data[..data_len]).unwrap();
+        let tag = self.cipher.encrypt_in_place_detached(nounce.into(), aad, &mut data[..data_len]).unwrap();
         data.copy_within(0..data_len, data_start);
         data[0] = self.encode_random_size(&random_bytes);
         data[1 .. random_size+ 1].copy_from_slice(&random_bytes);
@@ -91,8 +91,7 @@ impl EncoderBasicTrait for ChaCha20{
         tag.copy_from_slice(&data[data_start -16 .. data_start]);
         let data = &mut data[data_start .. data_start + data_len];
     
-        match self.cipher.decrypt_in_place_detached(&GenericArray::clone_from_slice(nounce), aad, data,
-                        &GenericArray::clone_from_slice(&tag)) {
+        match self.cipher.decrypt_in_place_detached(nounce.into(), aad, data, tag[..].into()) {
             Ok(_) => (data_len, (data_start + data_len) as i32),
             Err(_) => (0, -1)
         }

@@ -23,21 +23,35 @@ pub fn get_secs_now() -> u64 {
     sys_time.as_secs()
 }
 
-pub fn sha256_bytes(data:&str) -> [u8;32] {
+/*
+pub fn sha256_bytes(data: &str) -> [u8; 32] {
     let mut buf  = [0u8;32];
     let mut hasher = Sha256::new();
-    hasher.input(data.as_bytes());
-    buf.copy_from_slice(hasher.result().as_slice());
+    hasher.update(data.as_bytes());
+    buf.copy_from_slice(hasher.finalize().as_slice());
     buf
 }
+*/
 
-pub fn get_key_bytes(key:&str, otp:u32) -> [u8;32] {
+/*
+ pub fn sha256_bytes2(data:&str) -> Vec<u8> {
+      let mut hasher = Sha256::new();
+      hasher.update(data.as_bytes());
+      hasher.finalize()[..].into()
+}
+*/
+
+pub fn sha256_bytes(data: &str) -> [u8; 32]{
+    Sha256::digest(data.as_bytes()).into()
+}
+
+pub fn get_key_bytes(key: &str, otp: u32) -> [u8; 32] {
     let mut key = key.to_string();
     key.push_str(&format!("ThE=TuNnEL+SaLt-[];',/{}", otp));
     sha256_bytes(&key)
 }
 
-pub fn get_size_xor_bytes(key:&str, otp:u32) -> [u8;32] {
+pub fn get_size_xor_bytes(key: &str, otp: u32) -> [u8; 32] {
     let mut key = key.to_string();
     key.push_str(&format!("SaLT.fOr/SiZe+=Xor-{}", otp));
     sha256_bytes(&key)
@@ -53,11 +67,11 @@ pub fn get_random_bytes() -> (usize, Vec<u8>) {
     (length, result)
 }
 
-pub fn get_otp(KEY:&str, time_minutes:u64) -> u32 {
+pub fn get_otp(KEY: &str, time_minutes: u64) -> u32 {
     oath::hotp_raw(&sha256_bytes(KEY),  time_minutes, 6) as u32
 }
 
-pub fn get_port(otp:u32, PORT_RANGE_START:u32, PORT_RANGE_END:u32) -> u32 {
+pub fn get_port(otp: u32, PORT_RANGE_START: u32, PORT_RANGE_END: u32) -> u32 {
     if PORT_RANGE_START == PORT_RANGE_END {
         PORT_RANGE_START
     }
@@ -66,7 +80,7 @@ pub fn get_port(otp:u32, PORT_RANGE_START:u32, PORT_RANGE_END:u32) -> u32 {
     }
 }
 
-pub fn get_lifetime(otp:u32) -> u8 {
+pub fn get_lifetime(otp: u32) -> u8 {
     (otp % 15 + 1) as u8
 }
 

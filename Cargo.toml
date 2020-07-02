@@ -1,29 +1,28 @@
 [package]
 name = "tt"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["The TT Team"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [target.'cfg(any(linux, unix, macos))'.dependencies]
-tun = "0.4"
+tun = "0.5"
 socket2 = { version = "0.3", features = ["reuseport"] }		#[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos")), feature = "reuseport"))]
 
 [dependencies]
 libc = "*"
 time = "0.1"
-rand = "0.7.2"
-oath = "0.10.2"
-sha2 = "0.8.0"
-aead = "0.1.1"
+rand = "*"
+oath = "0.10"
+sha2 = "0.9"
+aead = "0.3"
 colored = "1.9.0"
-aes-gcm = "0.1.0"
+aes-gcm = "0.6"
 lazy_static = "1.4"
-chacha20poly1305 = "0.2"
+chacha20poly1305 = "0.5"
 log = { version = "0.4", features = ["std"] }
 structopt = { version = "0.3", default-features = false }
-#job_scheduler = "1.0.6" 	# clokwerk is another good scheduler, able to run in background
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nell = "0.2.0"
