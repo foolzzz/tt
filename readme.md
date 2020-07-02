@@ -26,7 +26,7 @@ Result:
 || tt | ss-libev|
 |----|----|----|
 |```aes-256-gcm```| 300 ~ 350 MB/s | 350 ~ 400 MB/s |
-|```chacha20-poly1305```| ≈ 200 MB/s | ≈ 300 MB/s |
+|```chacha20-poly1305```| ≈ 270 MB/s | ≈ 300 MB/s |
 
 ----
 ### Roadmap / Aims
@@ -66,7 +66,7 @@ Result:
 ### Usage 
 #### server
 ```
-tt-server 1.0.0
+tt-server 1.1.0
 TT, The Tunnel, server side
 
 USAGE:
@@ -91,7 +91,7 @@ OPTIONS:
 
 #### client
 ```
-tt-client 1.0.0
+tt-client 1.1.0
 TT, The Tunnel, client side
 
 USAGE:
