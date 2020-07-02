@@ -5,8 +5,8 @@ use std::thread;
 use std::process;
 use std::io::prelude::*;
 use std::collections::HashMap;
-use std::os::unix::io::{RawFd, AsRawFd};
 use std::sync::{mpsc, Arc, Mutex};
+use std::os::unix::io::{RawFd, IntoRawFd};
 
 extern crate tun;
 extern crate socket2;
@@ -40,7 +40,7 @@ pub fn setup(tun_addr: &str, MTU: usize) -> RawFd {
         process::exit(-1);
     });
 
-    iface.as_raw_fd()
+    iface.into_raw_fd()
 }
 
 
