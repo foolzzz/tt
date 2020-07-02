@@ -16,7 +16,7 @@ use lazy_static::lazy_static;
 #[allow(unused_imports)]
 use log::{trace, debug, info, warn, error, Level};
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "android")))]
 use crate::server_tun;
 use crate::server_proxy;
 use crate::encoder::{Encoder, EncoderMethods};
@@ -39,12 +39,12 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
 
     *TUN_MODE.lock().unwrap() = match TUN_IP{
         Some(tun_ip) => {
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "android"))]
             {
-                error!("Error: tun mode does not support windows for now");
+                error!("Error: tun mode does not support Windows and Android for now");
                 std::process::exit(-1);
             }
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(not(any(target_os = "windows", target_os = "android")))]
             {
                 let (tun_mode, proto_info) = match TUN_PROTO.to_uppercase().as_str() {
                     "TCP" => (1, "TCP"),

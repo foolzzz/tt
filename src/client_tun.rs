@@ -11,13 +11,15 @@ use std::os::unix::io::{RawFd, IntoRawFd};
 #[allow(unused_imports)]
 use log::{trace, debug, info, warn, error, Level};
 
+#[cfg(not(target_os = "android"))]
 extern crate tun;
+
 use crate::utils;
 use crate::client;
 use crate::encoder::Encoder;
 use crate::encoder::EncoderMethods;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 const STRIP_HEADER_LEN: usize = 0;
 #[cfg(target_os = "macos")]
 const STRIP_HEADER_LEN: usize = 4;
@@ -45,17 +47,25 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'stati
             })
         }
         else {
-            let mut conf = tun::Configuration::default();
-            conf.address(addr)
-                .netmask(mask)
-                .mtu(MTU as i32)
-                .up();
+            #[cfg(not(target_os = "android"))]
+            {
+                let mut conf = tun::Configuration::default();
+                conf.address(addr)
+                    .netmask(mask)
+                    .mtu(MTU as i32)
+                    .up();
 
-            let iface = tun::create(&conf).unwrap_or_else(|_err|{
-                error!("Failed to create tun device, {}", _err);
+                let iface = tun::create(&conf).unwrap_or_else(|_err|{
+                    error!("Failed to create tun device, {}", _err);
+                    process::exit(-1);
+                });
+                iface.into_raw_fd()
+            }
+            #[cfg(target_os = "android")]
+            {
+                error!("Can not create tun device for Android");
                 process::exit(-1);
-            });
-            iface.into_raw_fd()
+            }
         };
 
     // special 'handshake' packet as the first packet
@@ -137,7 +147,7 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                             0
                         });
                     }
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", target_os = "android"))]
                     {
                         tun_writer.write(&buf[offset as usize- data_len .. offset as usize]).unwrap_or_else(|_err|{
                             error!("tun write failed, {}", _err);
@@ -196,10 +206,6 @@ fn handle_tun_data(tun_fd: i32, KEY:&'static str, METHOD:&'static EncoderMethods
                     break;
                 }
             };
-//            info!("going to write,  {} <==> {}",
-//                stream_write.local_addr().unwrap().as_inet().unwrap(),
-//                stream_write.peer_addr().unwrap().as_inet().unwrap()
-//                );
 
             // outer loop: 2 times
             for _ in 0..2 {

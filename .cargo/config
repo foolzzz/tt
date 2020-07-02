@@ -28,10 +28,10 @@ rustflags = ["-C", "link-args=-lgcc"]    			# Fix the missing linking args on ca
 #linker = "mipsel-linux-gnu-gcc"
 #rustflags = ["-C", "link-args=-lpthread -ldl"]    # Fix the missing linking args on cargo build
 
-[target.arm-linux-androideabi]			# does not work with crate tun for now
+[target.arm-linux-androideabi]
 linker = "/path/to/android-ndk/stand_alone_arm/bin/arm-linux-androideabi-gcc"
 
-[target.aarch64-linux-androideabi]		# does not work with crate tun for now
+[target.aarch64-linux-android]
 linker = "/path/to/android-ndk/stand_alone_aarch64/bin/aarch64-linux-android-gcc"
 
 [target.x86_64-unknown-linux-gnu]

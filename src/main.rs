@@ -12,7 +12,7 @@ mod utils;
 mod server;
 mod client;
 mod encoder;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "android")))]
 mod server_tun;
 #[cfg(not(target_os = "windows"))]
 mod client_tun;

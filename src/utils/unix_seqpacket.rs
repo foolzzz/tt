@@ -2,7 +2,7 @@
 use std::mem::size_of;
 use libc::{self, c_char, close, sa_family_t, sockaddr_un, socket, socklen_t, AF_UNIX, SOCK_SEQPACKET};
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 const SUN_PATH_SIZE: usize = 108;
 #[cfg(target_os = "macos")]
 const SUN_PATH_SIZE: usize = 104;

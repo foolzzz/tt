@@ -6,8 +6,10 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[target.'cfg(any(linux, unix, macos))'.dependencies]
+[target.'cfg(all(any(linux, unix, macos), not(target_os = "android")))'.dependencies]
 tun = "0.4"
+
+[target.'cfg(any(linux, unix, macos))'.dependencies]
 socket2 = { version = "0.3", features = ["reuseport"] }		#[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos")), feature = "reuseport"))]
 
 [dependencies]
