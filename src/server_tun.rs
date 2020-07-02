@@ -5,15 +5,14 @@ use std::thread;
 use std::process;
 use std::io::prelude::*;
 use std::collections::HashMap;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{RawFd, AsRawFd};
 use std::sync::{mpsc, Arc, Mutex};
 
 extern crate tun;
 extern crate socket2;
 
 use crate::utils;
-use tun::platform::posix;
-use crate::encoder::{Encoder};
+use crate::encoder::Encoder;
 use std::net::{self, IpAddr, Ipv4Addr};
 
 #[allow(unused_imports)]
@@ -24,7 +23,7 @@ const STRIP_HEADER_LEN: usize = 0;
 #[cfg(target_os = "macos")]
 const STRIP_HEADER_LEN: usize = 4;
 
-pub fn setup(tun_addr: &str, MTU: usize) -> (posix::Reader, posix::Writer){
+pub fn setup(tun_addr: &str, MTU: usize) -> RawFd {
     let mut conf = tun::Configuration::default();
     let (addr, mask) = utils::parse_CIDR(tun_addr).unwrap_or_else(|_err|{
         error!("Failed to parse CIDR address: [{}]", tun_addr);
@@ -41,30 +40,32 @@ pub fn setup(tun_addr: &str, MTU: usize) -> (posix::Reader, posix::Writer){
         process::exit(-1);
     });
 
-    iface.split()
+    iface.as_raw_fd()
 }
 
 
 pub fn handle_connection(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
                         BUFFER_SIZE: usize, tun_ip: &str, tun_mode: u8, MTU: usize){
-    let (tun_reader, tun_writer) = setup(tun_ip, MTU);
+    let tun_fd = setup(tun_ip, MTU);
     if tun_mode == 1 {
-        handle_connection_tcp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE)
+        handle_connection_tcp(connection_rx, tun_fd, BUFFER_SIZE)
     }
     else{
-        handle_connection_udp(connection_rx, tun_reader, tun_writer, BUFFER_SIZE)
+        handle_connection_udp(connection_rx, tun_fd, BUFFER_SIZE)
     }
 }
 
 
 pub fn handle_connection_tcp(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
-                    mut tun_reader: posix::Reader, tun_writer: posix::Writer, BUFFER_SIZE: usize){
+                            tun_fd: RawFd, BUFFER_SIZE: usize){
     #[cfg(target_os = "linux")]
     let mut route = utils::route::Route::new();
 
     let clients: HashMap<Ipv4Addr, (socket2::Socket, Encoder)> = HashMap::new();
     let clients = Arc::new(Mutex::new(clients));
     let _clients = clients.clone();
+
+    let mut tun_reader = utils::tun_fd::TunFd::new(tun_fd);
 
     // thread: read from tun
     let _upload = thread::spawn(move ||{
@@ -111,11 +112,10 @@ pub fn handle_connection_tcp(connection_rx: mpsc::Receiver<(socket2::Socket, Enc
     });
 
 
-    let raw_fd: i32 = tun_writer.as_raw_fd();
     for (mut stream, encoder) in connection_rx {
         // thread: accept connection and write to channel
         let _clients = clients.clone();
-        let mut _tun_writer = utils::tun_fd::TunFd::new(raw_fd);
+        let mut _tun_writer = utils::tun_fd::TunFd::new(tun_fd);
         let _download = thread::spawn(move || {
             stream.set_nodelay(true);
             stream.set_read_timeout(Some(time::Duration::from_secs(86400))).unwrap();   // timeout 24 hours
@@ -254,13 +254,15 @@ pub fn handle_connection_tcp(connection_rx: mpsc::Receiver<(socket2::Socket, Enc
 
 
 pub fn handle_connection_udp(connection_rx: mpsc::Receiver<(socket2::Socket, Encoder)>,
-                    mut tun_reader: posix::Reader, tun_writer: posix::Writer, BUFFER_SIZE: usize){
+                            tun_fd: RawFd, BUFFER_SIZE: usize){
     #[cfg(target_os = "linux")]
     let mut route = utils::route::Route::new();
 
     let clients: HashMap<Ipv4Addr, (socket2::Socket, Encoder)> = HashMap::new();
     let clients = Arc::new(Mutex::new(clients));
     let _clients = clients.clone();
+
+    let mut tun_reader = utils::tun_fd::TunFd::new(tun_fd);
 
     // thread: read from tun
     let _upload = thread::spawn(move ||{
@@ -323,11 +325,10 @@ pub fn handle_connection_udp(connection_rx: mpsc::Receiver<(socket2::Socket, Enc
     });
 
 
-    let raw_fd: i32 = tun_writer.as_raw_fd();
     for (mut stream, encoder) in connection_rx {
         // thread: accept connection and write to channel
         let _clients = clients.clone();
-        let mut _tun_writer = utils::tun_fd::TunFd::new(raw_fd);
+        let mut _tun_writer = utils::tun_fd::TunFd::new(tun_fd);
         let _download = thread::spawn(move || {
             stream.set_nodelay(true);
             stream.set_read_timeout(Some(time::Duration::from_secs(86400))).unwrap();   // timeout 24 hours
