@@ -14,7 +14,6 @@ socket2 = { version = "0.3", features = ["reuseport"] }		#[cfg(all(unix, not(any
 
 [dependencies]
 libc = "*"
-time = "0.1"
 rand = "*"
 oath = "0.10"
 sha2 = "0.9"

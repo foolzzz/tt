@@ -123,3 +123,33 @@ pub fn parse_CIDR(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr), Box<dyn error::Err
     };
     Ok((addr, mask))
 }
+
+extern "C" {
+    fn strftime(
+        s: *mut libc::c_char,
+        max: libc::size_t,
+        format: *const libc::c_char,
+        tm: *const libc::tm,
+    ) -> usize;
+}
+pub fn local_time(fmt: &str, time_now: Option<i64>) -> Option<String> {
+    let time_now = match time_now {
+        Some(t) => unsafe {
+            libc::localtime(&t)
+        },
+        None => unsafe {
+            let t = libc::time(0 as *mut _);
+            libc::localtime(&t)
+        }
+    };
+
+    const BUF_SIZE: usize = 4096;
+    let mut buf = [0u8; BUF_SIZE];
+    let fmt = std::ffi::CString::new(fmt).unwrap();
+    let size = unsafe { strftime(buf.as_mut_ptr() as _, BUF_SIZE, fmt.as_ptr() as *const _, time_now as *const _) };
+
+    match size > 0 {
+        true => Some(String::from_utf8_lossy(&buf[..size]).to_string()),
+        false => None
+    }
+}

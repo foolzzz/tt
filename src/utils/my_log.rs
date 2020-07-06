@@ -1,8 +1,8 @@
 extern crate log;
-extern crate time;
 extern crate colored;
 use colored::*;
 
+use crate::utils;
 use log::{Log, Level,Metadata,Record,SetLoggerError};
 
 struct SimpleLogger{
@@ -33,13 +33,17 @@ impl Log for SimpleLogger {
                 record.module_path().unwrap_or_default()
             };
 
-            // for crate time 0.2, but it does not resolve the timezone problem with openwrt,
+            // for crate time-0.2, but it does not resolve the timezone problem with openwrt,
             // which has /etc/TZ instead of /etc/localtime, it doesn't work even with env TZ.
             //
-            //let time_local = time::OffsetDateTime::now_local();
-            //let time_str = format!("{} {}", time_local.date().format("%Y%m%d"), time_local.time().format("%T"));
-            println!( "{} [{:<5}] [{}] {}",
-                time::now().strftime("%Y%m%d %T").unwrap().to_string(),
+            // let time_local = time::OffsetDateTime::now_local();
+            // let time_str = format!("{} {}", time_local.date().format("%Y%m%d"), time_local.time().format("%T"));
+            //
+            // for crate time-0.1:
+            // time::now().strftime("%Y%m%d %T").unwrap().to_string(),
+
+            println!("{} [{:<5}] [{}] {}",
+                utils::local_time("%Y%m%d %T", None).unwrap(),
                 level_str,
                 target,
                 record.args());
