@@ -55,6 +55,7 @@ impl Log for SimpleLogger {
 }
 
 pub fn init_with_level(level: Level) -> Result<(), SetLoggerError> {
+    check_TZ();
     log::set_boxed_logger(Box::new(SimpleLogger{ level }))?;
     log::set_max_level(level.to_level_filter());
     Ok(())
@@ -63,4 +64,22 @@ pub fn init_with_level(level: Level) -> Result<(), SetLoggerError> {
 #[allow(dead_code)]
 pub fn init() -> Result<(), SetLoggerError> {
     init_with_level(Level::Trace)
+}
+
+// When building musl for some targets, the rustc will use it's own musl C lib,
+// which does not work with some OS like openwrt. we do some work here.
+pub fn check_TZ() {
+    match std::env::var("TZ"){
+        Ok(_) => (),
+        Err(_) => {
+            let path = std::path::Path::new("/etc/TZ");
+            if path.exists() {
+                let TZ = std::fs::read_to_string(path).unwrap_or_else(|err|{
+                    eprintln!("Failed to read /etc/TZ, {}", err);
+                    std::process::exit(-1);
+                });
+                std::env::set_var("TZ", TZ)
+            }
+        }
+    }
 }

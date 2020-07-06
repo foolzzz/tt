@@ -8,6 +8,8 @@ use std::time;
 use std::error;
 use sha2::{Sha256, Digest};
 use std::net::Ipv4Addr;
+#[cfg(target_pointer_width = "32")]
+use std::convert::TryFrom;
 
 pub mod my_log;
 
@@ -135,6 +137,8 @@ extern "C" {
 pub fn local_time(fmt: &str, time_now: Option<i64>) -> Option<String> {
     let time_now = match time_now {
         Some(t) => unsafe {
+            #[cfg(target_pointer_width = "32")]
+            let t: i32 = i32::try_from(t).unwrap();
             libc::localtime(&t)
         },
         None => unsafe {
