@@ -6,7 +6,7 @@ use colored::*;
 use log::{Log, Level,Metadata,Record,SetLoggerError};
 
 struct SimpleLogger{
-    level :Level
+    level: Level
 }
 
 impl Log for SimpleLogger {
