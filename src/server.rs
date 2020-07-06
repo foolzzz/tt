@@ -244,7 +244,7 @@ pub fn start_listener_udp(
             return
         }
     }
-    debug!("Open:  [UDP:{}], lifetime: [{}]", port, lifetime);
+    trace!("Open:  [UDP:{}], lifetime: [{}]", port, lifetime);
 
     let mut buf_peek = [0u8; 4096];
     loop{
@@ -285,7 +285,7 @@ pub fn start_listener_udp(
             _ => continue
         }
     }
-    debug!("Close: [UDP:{}], lifetime: [{}]", port, lifetime);
+    trace!("Close: [UDP:{}], lifetime: [{}]", port, lifetime);
 }
 
 pub fn start_listener_tcp(
@@ -326,7 +326,7 @@ pub fn start_listener_tcp(
             return
         }
     }
-    debug!("Open:  [TCP:{}], lifetime: [{}]", port, lifetime);
+    trace!("Open:  [TCP:{}], lifetime: [{}]", port, lifetime);
 
     let mut buf_peek = [0u8; 4096];
     for stream in listener.incoming() {
@@ -398,5 +398,5 @@ pub fn start_listener_tcp(
             streams.lock().unwrap().push(stream);       // push streams here, to be killed
         });
     }
-    debug!("Close: [TCP:{}], lifetime: [{}]", port, lifetime);
+    trace!("Close: [TCP:{}], lifetime: [{}]", port, lifetime);
 }

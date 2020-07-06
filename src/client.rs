@@ -35,7 +35,7 @@ pub fn get_stream(KEY:&'static str, METHOD:&'static EncoderMethods, time_now:u64
     let otp = utils::get_otp(KEY, time_now);
     let port = utils::get_port(otp, PORT_RANGE_START, PORT_RANGE_END);
     let server = format!("{}:{}", SERVER_ADDR, port);
-    debug!("Using port: [{}]", port);
+    trace!("Using port: [{}]", port);
     let server:Vec<SocketAddr> = server.to_socket_addrs()?.collect();
 
     let encoder = match METHOD {
@@ -64,7 +64,7 @@ pub fn get_stream_new(KEY:&'static str, METHOD:&'static EncoderMethods, time_now
     let otp = utils::get_otp(KEY, time_now);
     let port = utils::get_port(otp, PORT_RANGE_START, PORT_RANGE_END);
     let server = format!("{}:{}", SERVER_ADDR, port);
-    debug!("Using port: [{}]", port);
+    trace!("Using port: [{}]", port);
     let server:Vec<SocketAddr> = server.to_socket_addrs()?.collect();
 
     let encoder = match METHOD {
