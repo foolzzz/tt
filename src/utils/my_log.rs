@@ -1,5 +1,6 @@
 extern crate log;
 extern crate colored;
+#[cfg(unix)]
 use colored::*;
 
 use crate::utils;

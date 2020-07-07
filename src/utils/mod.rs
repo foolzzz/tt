@@ -133,17 +133,21 @@ extern "C" {
         format: *const libc::c_char,
         tm: *const libc::tm,
     ) -> usize;
+
+    fn localtime(
+        t: *const libc::time_t
+    ) ->  *mut libc::tm;
 }
 pub fn local_time(fmt: &str, time_now: Option<i64>) -> Option<String> {
     let time_now = match time_now {
         Some(t) => unsafe {
             #[cfg(target_pointer_width = "32")]
             let t: i32 = i32::try_from(t).unwrap();
-            libc::localtime(&t)
+            localtime(&t)
         },
         None => unsafe {
             let t = libc::time(0 as *mut _);
-            libc::localtime(&t)
+            localtime(&t)
         }
     };
 
