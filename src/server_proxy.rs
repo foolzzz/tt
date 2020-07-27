@@ -246,7 +246,12 @@ pub fn proxy_handshake(mut stream: TcpStream, encoder: Encoder) -> Result<TcpStr
         let addr: Vec<SocketAddr> = {
             let domain = String::from_utf8_lossy(&buf[index..offset as usize]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
             debug!("[HTTP] Proxy: {} => {}", stream.peer_addr().unwrap(), domain);
-            let mut domain = domain.split("//").collect::<Vec<&str>>()[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string();
+            //let mut domain = domain.split("//").collect::<Vec<&str>>()[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string();
+            let domain = domain.split("//").collect::<Vec<&str>>();
+            let mut domain = match domain.len() {
+                1 => return Err("Handshake failed at HTTP Proxy, invalid request".into()),
+                _ => domain[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string(),
+            };
             if !domain.contains(":") {
                 domain.push_str(":80")
             }
