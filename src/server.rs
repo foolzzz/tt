@@ -24,9 +24,14 @@ use crate::encoder::aes256gcm::AES256GCM;
 use crate::encoder::chacha20poly1305::ChaCha20;
 
 lazy_static! {
-    static ref TUN_MODE:    Mutex<u8> = Mutex::new(0);        // 0: off, 1: tcp, 2: udp, 3: both
+    static ref TUN_MODE:    Mutex<u8> = Mutex::new(0);
     static ref PROXY_MODE:  Mutex<bool> = Mutex::new(false);
     static ref NO_PORT_JUMP:Mutex<bool> = Mutex::new(false);
+
+    static ref TUN_MODE_OFF:  u8 = 0x00;
+    static ref TUN_MODE_UDP:  u8 = 0x0f;
+    static ref TUN_MODE_TCP:  u8 = 0xf0;
+    static ref TUN_MODE_BOTH: u8 = 0xff;
 }
 
 pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static str, 
@@ -47,20 +52,20 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
             #[cfg(not(any(target_os = "windows", target_os = "android")))]
             {
                 let (tun_mode, proto_info) = match TUN_PROTO.to_uppercase().as_str() {
-                    "TCP" => (1, "TCP"),
-                    "UDP" => (2, "UDP"),
-                    //"BOTH"=> (3, "TCP&UDP"),  // not supported yet
+                    "UDP" => (*TUN_MODE_UDP, "UDP"),
+                    "TCP" => (*TUN_MODE_TCP, "TCP"),
+                    "BOTH"=> (*TUN_MODE_BOTH, "UDP&TCP"),  // not supported yet
                     _ => {
-                        error!("Invalid tun protocol: [{}], available protocol: [ TCP | UDP | BOTH ]", TUN_PROTO);
+                        error!("Invalid tun protocol: [{}], available protocol: [ UDP | TCP | BOTH ]", TUN_PROTO);
                         std::process::exit(-1);
                     }
                 };
                 info!("TT {}, Server (tun mode on {})", env!("CARGO_PKG_VERSION"), proto_info);
-                thread::spawn( move || server_tun::handle_connection(rx_tun, BUFFER_SIZE, &tun_ip, tun_mode, MTU));
+                thread::spawn( move || server_tun::handle_connection(rx_tun, BUFFER_SIZE, &tun_ip, MTU));
                 tun_mode
             }
         },
-        None => 0
+        None => *TUN_MODE_OFF
     };
 
     *PROXY_MODE.lock().unwrap() = match _WITH_PROXY {
@@ -120,9 +125,9 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static 
 
 pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
         #[cfg(target_os = "windows")]
-        tx_tun: mpsc::Sender<(net::TcpStream, Encoder)>,
+        tx_tun: mpsc::Sender<(net::TcpStream, Encoder, bool)>,
         #[cfg(not(target_os = "windows"))]
-        tx_tun: mpsc::Sender<(socket2::Socket, Encoder)>,
+        tx_tun: mpsc::Sender<(socket2::Socket, Encoder, bool)>,
         KEY:&'static str, METHOD:&EncoderMethods, BIND_ADDR:&'static str,
         PORT_RANGE_START:u32, PORT_RANGE_END:u32, time_start:u64) {
     let otp = utils::get_otp(KEY, time_start);
@@ -145,7 +150,7 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
     let mut time_now = utils::get_secs_now();
 
     #[cfg(not(target_os = "windows"))]
-    if *TUN_MODE.lock().unwrap() == 2 {
+    if *TUN_MODE.lock().unwrap() & *TUN_MODE_UDP > 0 {
         let _tx_tun = tx_tun.clone();
         let _encoder = encoder.clone();
         let _streams = Arc::clone(&streams);
@@ -153,7 +158,7 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
         thread::spawn( move || start_listener_udp(_tx_tun, _encoder, BIND_ADDR, port, lifetime, _streams, _flag_stop));
     }
 
-    if *PROXY_MODE.lock().unwrap() || *TUN_MODE.lock().unwrap() == 1 {
+    if *PROXY_MODE.lock().unwrap() || *TUN_MODE.lock().unwrap() & *TUN_MODE_TCP > 0  {
         let _tx_tun = tx_tun.clone();
         let _encoder = encoder.clone();
         let _streams = Arc::clone(&streams);
@@ -213,7 +218,7 @@ pub fn start_listener(tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
 
 #[cfg(not(target_os = "windows"))]
 pub fn start_listener_udp(
-        tx_tun: mpsc::Sender<(socket2::Socket, Encoder)>,
+        tx_tun: mpsc::Sender<(socket2::Socket, Encoder, bool)>,
         encoder: Encoder, BIND_ADDR:&'static str, port: u32, lifetime: u8,
         streams: Arc<Mutex<Vec<socket2::Socket>>>, flag_stop: Arc<Mutex<usize>>){
 
@@ -273,7 +278,7 @@ pub fn start_listener_udp(
                     error!("client_socket connect error, {}", err);
                 });
 
-                tx_tun.send((client_socket, encoder.clone())).unwrap_or_else(|err|{
+                tx_tun.send((client_socket, encoder.clone(), true)).unwrap_or_else(|err|{
                     error!("send client_socket error, {}", err);
                 });
                 streams.lock().unwrap().push(socket2::Socket::from(_client_socket));
@@ -292,9 +297,9 @@ pub fn start_listener_tcp(
         tx_proxy: mpsc::Sender<(net::TcpStream, Encoder)>,
 
         #[cfg(not(target_os = "windows"))]
-        tx_tun: mpsc::Sender<(socket2::Socket, Encoder)>,
+        tx_tun: mpsc::Sender<(socket2::Socket, Encoder, bool)>,
         #[cfg(target_os = "windows")]
-        tx_tun: mpsc::Sender<(net::TcpStream, Encoder)>,
+        tx_tun: mpsc::Sender<(net::TcpStream, Encoder, bool)>,
 
         encoder: Encoder, BIND_ADDR:&'static str, port: u32, lifetime: u8,
 
@@ -385,10 +390,10 @@ pub fn start_listener_tcp(
                 return                                      // no need to push proxy stream to die
             }
             // IP header length: v4>=20, v6>=40, our defined first packet: v4=5, v6=...
-            else if *TUN_MODE.lock().expect("TUN_MODE lock failed") == 1  && data_len >= 5
+            else if *TUN_MODE.lock().expect("TUN_MODE lock failed") & *TUN_MODE_TCP > 0  && data_len >= 5
                 && (buf_peek[index]>>4 == 0x4 || buf_peek[index]>>4 == 0x6){
                     #[cfg(not(target_os = "windows"))]
-                    tx_tun.send((socket2::Socket::from(_stream), _encoder)).unwrap();
+                    tx_tun.send((socket2::Socket::from(_stream), _encoder, false)).unwrap();
             }
 
             #[cfg(not(target_os = "windows"))]
