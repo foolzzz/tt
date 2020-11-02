@@ -72,6 +72,8 @@ enum Opt {
         TUN_IP: Option<String>,
         #[structopt(long, default_value = "UDP")]
         TUN_PROTO: String,
+        #[structopt(long, default_value = "<null>")]
+        PROXY_AUTH: String,
         #[structopt(short, long, parse(from_occurrences))]
         VERBOSE: u8,
         #[structopt(short, long)]
@@ -102,7 +104,7 @@ fn main() {
             assert!(PORT_RANGE_START <= PORT_RANGE_END);
             server::run(KEY, METHODS, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, TUN_MTU, NO_PORT_JUMP, WITH_PROXY);
         },
-        Opt::client{ SERVER, LISTEN_ADDR, KEY, METHODS, RANGE, TUN_MTU, TUN_IP, TUN_PROTO, VERBOSE , QUIET } => {
+        Opt::client{ SERVER, LISTEN_ADDR, KEY, METHODS, RANGE, TUN_MTU, TUN_IP, TUN_PROTO, PROXY_AUTH, VERBOSE , QUIET } => {
             set_verbose(VERBOSE, QUIET);
             let RANGE: Vec<&str> = RANGE.split("-").collect();
             let BUFFER_SIZE = if TUN_MTU > (4096 - 60) { TUN_MTU + 60 } else { 4096 };
@@ -111,6 +113,7 @@ fn main() {
             let KEY:&'static str = Box::leak(KEY.into_boxed_str());
             let SERVER_ADDR:&'static str = Box::leak(SERVER.into_boxed_str());
             let LISTEN_ADDR:&'static str = Box::leak(LISTEN_ADDR.into_boxed_str());
+            let PROXY_AUTH:&'static str = Box::leak(PROXY_AUTH.into_boxed_str());
             let METHODS = match METHODS.as_ref() {
                 "aes-256-gcm" => &EncoderMethods::AES256,
                 "chacha20-poly1305" => &EncoderMethods::ChaCha20,
@@ -121,7 +124,7 @@ fn main() {
             };
             assert!(TUN_MTU<=65536);
             assert!(PORT_RANGE_START <= PORT_RANGE_END);
-            client::run(KEY, METHODS, SERVER_ADDR, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, TUN_MTU);
+            client::run(KEY, METHODS, SERVER_ADDR, LISTEN_ADDR, PORT_RANGE_START, PORT_RANGE_END, BUFFER_SIZE, TUN_IP, TUN_PROTO, TUN_MTU, PROXY_AUTH);
         },
     }
 }

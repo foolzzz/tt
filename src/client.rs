@@ -143,9 +143,9 @@ pub fn tun_get_stream(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_A
     };
 }
 
-pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'static str, 
-            LISTEN_ADDR:&'static str, PORT_START:u32, PORT_END:u32, BUFFER_SIZE:usize, 
-            TUN_IP: Option<String>, TUN_PROTO: String, MTU: usize) {
+pub fn run(KEY: &'static str, METHOD: &'static EncoderMethods, SERVER_ADDR: &'static str,
+            LISTEN_ADDR: &'static str, PORT_START: u32, PORT_END: u32, BUFFER_SIZE: usize,
+            TUN_IP: Option<String>, TUN_PROTO: String, MTU: usize, PROXY_AUTH: &'static str) {
 
     if let Some(tun_ip) = TUN_IP {
 //        if cfg!(target_os = "windows") {
@@ -158,11 +158,11 @@ pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, SERVER_ADDR:&'stati
         #[cfg(not(target_os = "windows"))]
         {
             info!("TT {}, Client (tun mode on {})", env!("CARGO_PKG_VERSION"), TUN_PROTO.to_uppercase());
-            client_tun::run(&KEY, METHOD, &SERVER_ADDR, PORT_START, PORT_END, BUFFER_SIZE, &tun_ip, &TUN_PROTO, MTU);
+            client_tun::run(KEY, METHOD, SERVER_ADDR, PORT_START, PORT_END, BUFFER_SIZE, &tun_ip, &TUN_PROTO, MTU);
         }
     }
     else{
         info!("TT {}, Client (proxy mode)", env!("CARGO_PKG_VERSION"));
-        client_proxy::run(&KEY, METHOD, &SERVER_ADDR, &LISTEN_ADDR, PORT_START, PORT_END, BUFFER_SIZE);
+        client_proxy::run(KEY, METHOD, SERVER_ADDR, LISTEN_ADDR, PORT_START, PORT_END, BUFFER_SIZE, PROXY_AUTH);
     }
 }

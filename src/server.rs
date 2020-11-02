@@ -34,7 +34,7 @@ lazy_static! {
     static ref TUN_MODE_BOTH: u8 = 0xff;
 }
 
-pub fn run(KEY:&'static str, METHOD:&'static EncoderMethods, BIND_ADDR:&'static str, 
+pub fn run(KEY: &'static str, METHOD: &'static EncoderMethods, BIND_ADDR: &'static str,
             PORT_START: u32, PORT_END: u32, BUFFER_SIZE: usize, TUN_IP: Option<String>,
             TUN_PROTO: String, MTU: usize, _NO_PORT_JUMP: bool, _WITH_PROXY: bool) {
 
