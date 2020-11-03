@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_must_use)]
+extern crate base64;
 
 use std::thread;
 use std::error::Error;
@@ -61,8 +62,8 @@ pub fn handle_connection(local_stream:  TcpStream,
     let mut local_stream_write = local_stream.try_clone().unwrap();
 
     // do handshake before connecting to upstream
-    let dest = match proxy_handshake(local_stream, PROXY_AUTH){
-        Ok(dest) if dest.len() > 0 => dest,
+    let (dest, URI_DOMAIN_LEN) = match proxy_handshake(local_stream, PROXY_AUTH){
+        Ok((dest, domain_len)) if dest.len() > 0 => (dest, domain_len),
         Ok(_) => return,
         Err(err) => {
             error!("handshake error: {}", err);
@@ -83,6 +84,7 @@ pub fn handle_connection(local_stream:  TcpStream,
     let mut upstream_write = upstream.try_clone().unwrap();
     let decoder = encoder.clone();
 
+    // send TTCONNECT + Destination
     let mut buf = vec![0u8; BUFFER_SIZE];
     buf[ .. 9].copy_from_slice("TTCONNECT".as_bytes());
     buf[9 .. 9 + dest.len()].copy_from_slice(dest.as_bytes());
@@ -173,6 +175,15 @@ pub fn handle_connection(local_stream:  TcpStream,
                     break;
                 }
             };
+            // we need to reconstruct the URI of every request for http proxy, like: GET http://example.com/api => GET /api
+            if URI_DOMAIN_LEN > 0 {
+                let req = String::from_utf8_lossy(&buf[..index]);
+                if let Some(URI_START) = req.find("http://"){
+                    for i in URI_START .. URI_START + 7 + URI_DOMAIN_LEN {
+                        buf[i] = ' ' as u8;
+                    }
+                }
+            }
             index = encoder.encode(&mut buf, index);
             match upstream_write.write(&buf[..index]) {
                 Ok(_) => (),
@@ -189,7 +200,7 @@ pub fn handle_connection(local_stream:  TcpStream,
 }
 
 
-pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Result<String, Box<dyn Error>>{
+pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Result<(String, usize), Box<dyn Error>>{
     let mut buf = [0u8; 4096];
     let mut len = stream.peek(&mut buf)?;
 
@@ -197,7 +208,6 @@ pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Resul
     if (len == 2 + buf[1] as usize) && buf[0]==0x05 {
         // for socks5, we consume the first packet
         stream.read(&mut buf)?;
-
         match PROXY_AUTH {
             // NO AUTH
             "<null>" => {
@@ -214,29 +224,28 @@ pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Resul
                 }
                 if !support_basic_auth {
                     stream.write(&[0x05, 0xFF])?;
-                    return Err("SOCK5 AUTH Failed: client does not support USERNAME/PASSWORD basic auth".into());
+                    return Err("SOCK5 AUTH Failed: credentials not provided".into());
                 }
                 stream.write(&[0x05, 0x02])?;
                 len = stream.read(&mut buf)?;
                 if len == 0 {
-                    return Ok("".into())
+                    return Ok(("".into(), 0))
                 }
-                let USERNAME = String::from_utf8_lossy(&buf[2 .. 2 + buf[1] as usize]);
-                let PASSWORD = String::from_utf8_lossy(&buf[2 + buf[1] as usize + 1 .. len]);
+                let USERNAME = std::str::from_utf8(&buf[2 .. 2 + buf[1] as usize])?;
+                let PASSWORD = std::str::from_utf8(&buf[2 + buf[1] as usize + 1 .. len])?;
                 if PROXY_AUTH == format!("{}:{}", USERNAME, PASSWORD){
                     stream.write(&[0x01, 0x00])?;
                 }
                 else{
                     stream.write(&[0x01, 0x01])?;
-                    return Err(format!("SOCKS5 AUTH Failed: username: [{}], password: [{}]", USERNAME, PASSWORD).into());
+                    return Err(format!("SOCKS5 AUTH Failed: wrong credentials: [{}:{}]", USERNAME, PASSWORD).into());
                 }
             },
         };
 
         len = stream.read(&mut buf)?;
         if len == 0 {
-            //return Err("Handshake failed at socks5: terminated".into());
-            return Ok("".into())
+            return Ok(("".into(), 0))
         }
         match buf[1] {
             0x01 => (),     // CONNECT
@@ -272,46 +281,84 @@ pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Resul
         debug!("[SOCKS5] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
         buf[..10].copy_from_slice(&[0x5, 0x0, 0x0, 0x1, 0x7f, 0x0, 0x0, 0x1, 0x0, 0x0]);
         match stream.write(&buf[..10]) {
-            Ok(_) => Ok(domain),
+            Ok(_) => Ok((domain, 0)),
             Err(err) => Err(format!("Handshake failed at socks5: {}", err).into())
         }
     }
 
-    // HTTP CONNECT
-    else if &buf[0 .. 7] == "CONNECT".as_bytes() {
-        // for HTTP CONNECT, we consume the first packet
-        stream.read(&mut buf)?;
-        let domain = String::from_utf8_lossy(&buf[..len]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
-        debug!("[HTTP] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
-
-        match stream.write("HTTP/1.0 200 Connection established\r\n\r\n".as_bytes()) {
-            Ok(_) => Ok(domain.into()),
-            Err(err) => Err(format!("Handshake failed at HTTP CONNECT: {}", err).into())
-        }
-    }
-
-    // HTTP Plain
+    // HTTP Proxy
     else {
-        // for HTTP Plain, we shall not consume the first packet
-        // let domain = String::from_utf8_lossy(&buf[..len]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
-        let domain = String::from_utf8_lossy(&buf[..len]);
-        let domain = domain.split_whitespace().collect::<Vec<&str>>();
-        let domain = match domain.len() > 1 {
-            true => domain[1],
-            false => return Err("Handshake failed at HTTP Proxy, invalid request".into()),
-        };
-        debug!("[HTTP] Proxy: {} => {}", stream.peer_addr().unwrap(), domain);
-
-
-        // let mut domain = domain.split("//").collect::<Vec<&str>>()[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string();
-        let domain = domain.split("//").collect::<Vec<&str>>();
-        let mut domain = match domain.len() {
-            1 => return Err("Handshake failed at HTTP Proxy, invalid request".into()),
-            _ => domain[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string(),
-        };
-        if !domain.contains(":") {
-            domain.push_str(":80")
+        match PROXY_AUTH {
+            // NO AUTH
+            "<null>" => (),
+            // HTTP Basic
+            _ => {
+                let req = String::from_utf8_lossy(&buf[..len]);
+                match req.find("Proxy-Authorization") {
+                    Some(header_start) => {
+                        let header = std::str::from_utf8(&buf[header_start .. len])?.split("\r\n").collect::<Vec<&str>>();
+                        if header[0] != format!("Proxy-Authorization: Basic {}", base64::encode(PROXY_AUTH)) {
+                            return Err(format!("HTTP AUTH Failed: wrong credentials: [{}]", header[0]).into())
+                        }
+                    },
+                    _ => {
+                        //stream.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"HTTP Basic Auth\"\r\n\r\n".as_bytes());
+                        stream.write("HTTP/1.1 401 Unauthorized\r\n\r\n".as_bytes());
+                        return Err("HTTP AUTH Failed: credentials not provided".into())
+                    }
+                };
+                len = stream.read(&mut buf)?;
+            }
         }
-        Ok(domain)
+
+        // HTTP CONNECT
+        if &buf[0 .. 7] == "CONNECT".as_bytes() {
+            // for HTTP CONNECT, we consume the first packet
+            stream.read(&mut buf)?;
+            let domain = String::from_utf8_lossy(&buf[..len]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
+            debug!("[HTTP] CONNECT: {} => {}", stream.peer_addr().unwrap(), domain);
+
+            match stream.write("HTTP/1.0 200 Connection established\r\n\r\n".as_bytes()) {
+                Ok(_) => Ok((domain.into(), 0)),
+                Err(err) => Err(format!("Handshake failed at HTTP CONNECT: {}", err).into())
+            }
+        }
+
+        // HTTP Plain
+        else {
+            // for HTTP Plain, we shall not consume the first packet
+            // let url = String::from_utf8_lossy(&buf[..len]).split_whitespace().collect::<Vec<&str>>()[1].to_string();
+            let req = String::from_utf8_lossy(&buf[..len]);
+            let uri = req.split_whitespace().collect::<Vec<&str>>();
+            let uri = match uri.len() > 1 {
+                true => uri[1],
+                false => return Err("Handshake failed at HTTP Proxy, invalid request".into())
+            };
+            debug!("[HTTP] Proxy: {} => {}", stream.peer_addr().unwrap(), uri);
+
+            // let mut domain = domain.split("//").collect::<Vec<&str>>()[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string();
+            let domain = uri.split("//").collect::<Vec<&str>>();
+            match domain.len() {
+                1 => Err("Handshake failed at HTTP Proxy, invalid request".into()),
+                _ => {
+                    let mut domain = domain[1].trim_end_matches('/').split("/").collect::<Vec<&str>>()[0].to_string();
+/*
+                    let url_scheme_pos = req.find("http").unwrap();
+                    let buf1 = &buf[ .. url_scheme_pos];
+                    let buf2 = &buf[url_scheme_pos + 7 + domain.len() .. len];
+
+                    let mut new_req = vec![0u8; buf1.len() + buf2.len()];
+                    new_req[ .. buf1.len()].copy_from_slice(&buf1);
+                    new_req[buf1.len() .. buf1.len() + buf2.len()].copy_from_slice(&buf2);
+                    info!("buf len: {}, new len: {}, new req:\n{}", len, new_req.len(), String::from_utf8_lossy(&new_req));
+*/
+                    let URI_DOMAIN_LEN = domain.len();
+                    if !domain.contains(":") {
+                        domain.push_str(":80")
+                    }
+                    Ok((domain, URI_DOMAIN_LEN))
+                },
+            }
+        }
     }
 }
