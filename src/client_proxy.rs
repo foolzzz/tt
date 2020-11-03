@@ -231,8 +231,10 @@ pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Resul
                 if len == 0 {
                     return Ok(("".into(), 0))
                 }
-                let USERNAME = std::str::from_utf8(&buf[2 .. 2 + buf[1] as usize])?;
-                let PASSWORD = std::str::from_utf8(&buf[2 + buf[1] as usize + 1 .. len])?;
+                //let USERNAME = std::str::from_utf8(&buf[2 .. 2 + buf[1] as usize])?;
+                //let PASSWORD = std::str::from_utf8(&buf[2 + buf[1] as usize + 1 .. len])?;
+                let USERNAME = String::from_utf8_lossy(&buf[2 .. 2 + buf[1] as usize]);
+                let PASSWORD = String::from_utf8_lossy(&buf[2 + buf[1] as usize + 1 .. len]);
                 if PROXY_AUTH == format!("{}:{}", USERNAME, PASSWORD){
                     stream.write(&[0x01, 0x00])?;
                 }
@@ -296,18 +298,20 @@ pub fn proxy_handshake(mut stream: TcpStream, PROXY_AUTH: &'static str) -> Resul
                 let req = String::from_utf8_lossy(&buf[..len]);
                 match req.find("Proxy-Authorization") {
                     Some(header_start) => {
-                        let header = std::str::from_utf8(&buf[header_start .. len])?.split("\r\n").collect::<Vec<&str>>();
-                        if header[0] != format!("Proxy-Authorization: Basic {}", base64::encode(PROXY_AUTH)) {
-                            return Err(format!("HTTP AUTH Failed: wrong credentials: [{}]", header[0]).into())
+                        let header = String::from_utf8_lossy(&buf[header_start .. len]);
+                        let headers = header.split("\r\n").collect::<Vec<&str>>();
+                        if headers[0] != format!("Proxy-Authorization: Basic {}", base64::encode(PROXY_AUTH)) {
+                            stream.write("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Test Basic Auth\"\r\n\r\n\r\n".as_bytes());
+                            return Err(format!("HTTP AUTH Failed: wrong credentials: [{}]", headers[0]).into())
                         }
                     },
-                    _ => {
-                        //stream.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"HTTP Basic Auth\"\r\n\r\n".as_bytes());
-                        stream.write("HTTP/1.1 401 Unauthorized\r\n\r\n".as_bytes());
+                    None => {
+                        // send 407 and close the connection,
+                        // as chrome and firefox always start a new connection...
+                        stream.write("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Test Basic Auth\"\r\n\r\n\r\n".as_bytes());
                         return Err("HTTP AUTH Failed: credentials not provided".into())
                     }
                 };
-                len = stream.read(&mut buf)?;
             }
         }
 
